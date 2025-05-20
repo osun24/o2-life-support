@@ -35,7 +35,21 @@ def simulate_colony(size=colony):
     total_oxygen = sum(p.oxygen_consumption() for p in people)
     return total_oxygen, people
 
-# Example usage
-total_oxygen, colony = simulate_colony()
-print(f"People: {colony_number} Total oxygen required per day: {total_oxygen:.2f} kg")
 
+sizes_to_simulate = [25, 50, 75, 100, 125, 150]
+repetitions = 10
+
+with open(f"simulation_data.csv", "w") as f:
+    f.write("Colony Size,Total Oxygen Consumption\n")
+    print("Colony Size,Total Oxygen Consumption")
+
+# Repeat 5 times for each colony size
+for i in range(0, 5):
+    for size in sizes_to_simulate:
+        total_oxygen, colony = simulate_colony(size = size)
+        
+        # Save to CSV
+        with open(f"simulation_data.csv", "a") as f:
+            f.write(f"{size},{total_oxygen}\n")
+            print(f"{size},{total_oxygen}")
+print("Simulation complete.")
