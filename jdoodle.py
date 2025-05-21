@@ -21,7 +21,7 @@ class Person:
         self.activity = np.random.normal(1.5, 1/6)
         self.is_male = np.random.choice([True, False])
         
-        self.body_size = np.random.normal(67.5, 13.8)
+        self.body_size = np.random.normal(67.5, 13.8) # mass (kg)
         if self.is_male:
             self.body_size = np.random.normal(80.3, 13.5)
 
