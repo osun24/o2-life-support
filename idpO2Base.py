@@ -19,11 +19,13 @@ from scipy.spatial.distance import cdist
 # Helper functions
 # --------------------------------------------------------------
 
-def reflect(pos, L):
-    """Reflective boundaries for 0 ≤ pos ≤ L (in‑place)."""
-    pos[pos < 0] *= -1
-    pos[pos > L] = 2 * L - pos[pos > L]
-    return pos
+def initialize_field(L, grid_res, alpha=1.0):
+    """Initialize a 2D Dirichlet-distributed field."""
+    size = grid_res * grid_res
+    # initiate a Dirichlet distribution (2D PDF) --> instead of particles bc particles are SLOW
+    field = np.random.dirichlet([alpha] * size).reshape((grid_res, grid_res))
+    field *= L * L  # scale to total O₂ amount if needed
+    return field
 
 
 def sensor_concentrations(field, sensors, L, grid_res, noise_std=0.01):
