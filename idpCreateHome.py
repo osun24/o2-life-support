@@ -2,29 +2,19 @@ import tkinter as tk
 from tkinter import ttk
 import math
 import numpy as np
+from shapely.geometry import Polygon, Point
+from shapely.ops import unary_union
 
-# Attempt to import Shapely
-try:
-    from shapely.geometry import Polygon, Point
-    from shapely.ops import unary_union
-    SHAPELY_AVAILABLE = True
-except ImportError:
-    SHAPELY_AVAILABLE = False
-    # print("Shapely library not found. For accurate union area, please install it: pip install shapely")
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, WhiteKernel, ConstantKernel
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
 
-# Attempt to import scikit-learn for Gaussian Process
-try:
-    from sklearn.gaussian_process import GaussianProcessRegressor
-    from sklearn.gaussian_process.kernels import RBF, WhiteKernel, ConstantKernel
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
-    print("Scikit-learn library not found. GP reconstruction functionality will be disabled. "
-          "Please install it: pip install scikit-learn")
-
+SHAPELY_AVAILABLE = True
+SKLEARN_AVAILABLE = True
 
 # --- Constants ---
-CELL_SIZE = 10
+CELL_SIZE = 5 # Higher resolution for better detail
 AXIS_MARGIN = 30
 CANVAS_WIDTH = AXIS_MARGIN + 600 + CELL_SIZE
 CANVAS_HEIGHT = AXIS_MARGIN + 480 + CELL_SIZE
@@ -33,6 +23,10 @@ TOTAL_CANVAS_HEIGHT = CANVAS_HEIGHT + SIM_CONTROLS_HEIGHT
 
 COLOR_SCALE_WIDTH = 70 # Increased width for better label spacing
 COLOR_SCALE_PADDING = 10
+
+# Diffusion constants (Fokker-Planck equation)
+DIFFUSION_COEFFICIENT = 0.5  # Controls diffusion rate
+DIFFUSION_UPDATE_EVERY_N_FRAMES = 1  # Update diffusion every N frames for performance
 
 GRID_COLOR = "lightgray"
 AXIS_LINE_COLOR = "black"
@@ -46,7 +40,7 @@ SHAPE_STIPPLE = ""
 
 SELECTED_OUTLINE_COLOR = "blue" 
 SELECTED_OUTLINE_WIDTH = 2
-DEFAULT_OUTLINE_COLOR = "black"
+DEFAULT_OUTLINE_COLOR = ""
 DEFAULT_OUTLINE_WIDTH = 1
 
 # Dirichlet Field Constants (Ground Truth)
@@ -64,11 +58,12 @@ SENSOR_MIN_INFLUENCE_STRENGTH = 0.1
 SENSOR_MAX_INFLUENCE_STRENGTH = 10.0
 SENSOR_OUTLINE_COLOR = "red"
 SENSOR_SELECTED_OUTLINE_COLOR = "magenta"
-SENSOR_SELECTED_OUTLINE_WIDTH = 3
-SENSOR_READING_NOISE_STD = 2.0 # Std dev of noise added to sensor readings for GP
+SENSOR_SELECTED_OUTLINE_WIDTH = 2
 
 # GP Constants
 GP_UPDATE_EVERY_N_FRAMES = 5 # Update GP every N simulation frames where Dirichlet field also changes
+DIFFUSION_UPDATE_EVERY_N_FRAMES = 3 # Update diffusion every N frames for performance
+SENSOR_READING_NOISE_STD = 2.0 # Std dev of noise added to sensor readings for GP
 
 
 # --- Sensor Class ---
@@ -262,15 +257,14 @@ class DrawingApp:
         
         self.sim_running = False 
         self.sim_job_id = None 
-        self.field_vis_cells = {} # For heatmap cells
-
-        # GP related attributes
+        self.field_vis_cells = {} # For heatmap cells        # GP related attributes
         self.gp_model = None
         self.gp_mean_field = np.zeros((self.sim_grid_rows, self.sim_grid_cols), dtype=float) # Inferred field
         self.XY_gp_prediction_grid = self._create_gp_prediction_grid() # Coords for GP prediction
         self.gp_update_counter = 0
+        self.diffusion_update_counter = 0  # Counter for diffusion updates
         self.current_gp_display_min = 0.0 # For GP heatmap scale
-        self.current_gp_display_max = DIRICHLET_SCALE_FACTOR 
+        self.current_gp_display_max = DIRICHLET_SCALE_FACTOR
 
         if SKLEARN_AVAILABLE:
             # Kernel for GP: RBF for spatial correlation, WhiteKernel for noise in sensor readings
@@ -439,15 +433,15 @@ class DrawingApp:
 
     def draw_visual_grid_and_axes(self): 
         self.drawing_canvas.delete("grid", "axis_label", "grid_axis_line")
+        # Only draw axes, not gridlines
         self.drawing_canvas.create_line(AXIS_MARGIN, AXIS_MARGIN, CANVAS_WIDTH - CELL_SIZE, AXIS_MARGIN, fill=AXIS_LINE_COLOR, width=1, tags="grid_axis_line")
         self.drawing_canvas.create_line(AXIS_MARGIN, AXIS_MARGIN, AXIS_MARGIN, CANVAS_HEIGHT - CELL_SIZE, fill=AXIS_LINE_COLOR, width=1, tags="grid_axis_line")
-        for y in range(AXIS_MARGIN+CELL_SIZE,CANVAS_HEIGHT-CELL_SIZE+1,CELL_SIZE): self.drawing_canvas.create_line(AXIS_MARGIN,y,CANVAS_WIDTH-CELL_SIZE,y,fill=GRID_COLOR,tags="grid")
-        for x in range(AXIS_MARGIN+CELL_SIZE,CANVAS_WIDTH-CELL_SIZE+1,CELL_SIZE): self.drawing_canvas.create_line(x,AXIS_MARGIN,x,CANVAS_HEIGHT-CELL_SIZE,fill=GRID_COLOR,tags="grid")
         for x in range(AXIS_MARGIN,CANVAS_WIDTH-CELL_SIZE+1,CELL_SIZE):
             if (x-AXIS_MARGIN)%LABEL_INTERVAL==0: self.drawing_canvas.create_text(x,AXIS_MARGIN-10,text=str(x-AXIS_MARGIN),anchor=tk.S,font=LABEL_FONT,fill=LABEL_COLOR,tags="axis_label")
         for y in range(AXIS_MARGIN,CANVAS_HEIGHT-CELL_SIZE+1,CELL_SIZE):
             if (y-AXIS_MARGIN)%LABEL_INTERVAL==0: self.drawing_canvas.create_text(AXIS_MARGIN-10,y,text=str(y-AXIS_MARGIN),anchor=tk.E,font=LABEL_FONT,fill=LABEL_COLOR,tags="axis_label")
-        self.drawing_canvas.tag_lower("grid"); self.drawing_canvas.tag_lower("grid_axis_line","grid"); self.drawing_canvas.tag_lower("axis_label")
+        self.drawing_canvas.tag_lower("grid_axis_line")
+        self.drawing_canvas.tag_lower("axis_label")
         self.drawing_canvas.tag_raise("user_shape")
 
 
@@ -602,25 +596,56 @@ class DrawingApp:
         self.sensors_list.clear()
         if self.selected_sensor_obj: self.selected_sensor_obj = None; self._show_sensor_params_frame(False)
         self.sim_status_label_var.set(f"All sensors cleared. Re-initialize field if needed.")
-
-
     def initialize_dirichlet_field(self, scale_factor=100.0):
-        """Generates the ground truth Dirichlet field, influenced by sensor parameters."""
-        num_cells_total = self.sim_grid_rows * self.sim_grid_cols
-        if num_cells_total == 0: return
+        """Generates a nearly uniform ground truth Dirichlet field (realistic, no bias)."""
+        # Set all cells to the same value, with a tiny random perturbation for numerical stability
+        base_value = scale_factor
+        noise = np.random.normal(0, scale_factor * 0.01, (self.sim_grid_rows, self.sim_grid_cols))
+        self.data_field = np.full((self.sim_grid_rows, self.sim_grid_cols), base_value, dtype=float) + noise
+        self.data_field[self.data_field < 0] = 0
+        # The field will evolve via diffusion only
 
-        alpha_array = np.full(num_cells_total, DIRICHLET_BASE_ALPHA, dtype=float)
-        for sensor_obj in self.sensors_list:
-            for r_idx in range(self.sim_grid_rows):
-                for c_idx in range(self.sim_grid_cols):
-                    cell_center_x, cell_center_y = self._sim_to_canvas_coords_center(r_idx, c_idx)
-                    dist_sq = (cell_center_x - sensor_obj.x)**2 + (cell_center_y - sensor_obj.y)**2
-                    if dist_sq <= sensor_obj.influence_radius**2: # Use influence_radius for Dirichlet
-                        flat_idx = r_idx * self.sim_grid_cols + c_idx
-                        alpha_array[flat_idx] += sensor_obj.influence_strength
-        alpha_array[alpha_array <= 0] = 1e-6 
-        dirichlet_samples = np.random.dirichlet(alpha_array, size=1).flatten()
-        self.data_field = dirichlet_samples.reshape((self.sim_grid_rows, self.sim_grid_cols)) * scale_factor
+    def apply_diffusion_step(self, dt=0.1):
+        # https://en.wikipedia.org/wiki/Fokker%E2%80%93Planck_equation
+        # https://machinelearningmastery.com/a-gentle-introduction-to-the-laplacian/
+        """Apply diffusion using a simplified Fokker-Planck equation (Laplacian diffusion)."""
+        if self.sim_grid_rows < 3 or self.sim_grid_cols < 3:
+            return  # Need at least 3x3 grid for diffusion
+            
+        # Create padded field for boundary handling
+        padded_field = np.pad(self.data_field, 1, mode='edge')
+        
+        # Compute Laplacian using finite differences
+        laplacian = np.zeros_like(self.data_field)
+        
+        # Central finite difference approximation of Laplacian
+        for r in range(1, self.sim_grid_rows + 1):
+            for c in range(1, self.sim_grid_cols + 1):
+                # Only apply diffusion within active regions
+                if self.map_mask[r-1, c-1] == 1:
+                    laplacian[r-1, c-1] = (
+                        padded_field[r-1, c] + padded_field[r+1, c] +  # vertical neighbors
+                        padded_field[r, c-1] + padded_field[r, c+1] -  # horizontal neighbors
+                        4 * padded_field[r, c]                        # center point
+                    ) / (CELL_SIZE ** 2)  # Scale by grid spacing squared
+        
+        # Update field using Fokker-Planck diffusion: ∂f/∂t = D * ∇²f
+        diffusion_update = DIFFUSION_COEFFICIENT * dt * laplacian
+        
+        # Apply update only to active regions and ensure non-negativity
+        for r in range(self.sim_grid_rows):
+            for c in range(self.sim_grid_cols):
+                if self.map_mask[r, c] == 1:
+                    self.data_field[r, c] = max(0, self.data_field[r, c] + diffusion_update[r, c])
+        
+        # Normalize to maintain total O2 conservation within each region
+        active_cells = self.data_field[self.map_mask == 1]
+        if active_cells.size > 0:
+            total_o2 = np.sum(active_cells)
+            if total_o2 > 0:
+                # Renormalize to maintain approximately the same total
+                normalization_factor = (active_cells.size * DIRICHLET_SCALE_FACTOR * 0.5) / total_o2
+                self.data_field[self.map_mask == 1] *= min(2.0, max(0.5, normalization_factor))
 
     def collect_sensor_data_for_gp(self):
         """Collects readings from the 'data_field' (ground truth) at sensor locations for GP."""
@@ -705,29 +730,76 @@ class DrawingApp:
             self.current_gp_display_min = max(0, val - 0.5 * abs(val) - 0.1) 
             self.current_gp_display_max = val + 0.5 * abs(val) + 0.1
             if abs(self.current_gp_display_max - self.current_gp_display_min) < 1e-6 : 
-                 self.current_gp_display_max = self.current_gp_display_min + 0.1 
-        self.field_scale_label_var.set(f"GP Field Scale: {self.current_gp_display_min:.2f}-{self.current_gp_display_max:.2f}")
+                 self.current_gp_display_max = self.current_gp_display_min + 0.1       
+                 self.field_scale_label_var.set(f"GP Field Scale: {self.current_gp_display_min:.2f}-{self.current_gp_display_max:.2f}")
 
-
-    def prepare_visualization_map(self): 
-        self.map_mask.fill(0) 
+    def prepare_visualization_map(self):
+        """Prepares the map mask and visualization cells for the simulation."""
+        # Clear existing mask
+        self.map_mask.fill(0)
+        
+        # Mark cells that are inside any shape as active (1)
         for r in range(self.sim_grid_rows):
             for c in range(self.sim_grid_cols):
-                cx_c, cy_c = self._sim_to_canvas_coords_center(r,c) 
+                cx_c, cy_c = self._sim_to_canvas_coords_center(r, c)
                 for s_obj in self.shapes_list:
-                    if s_obj.contains_point(cx_c,cy_c): self.map_mask[r,c]=1; break 
-        for item_id in self.field_vis_cells.values(): self.drawing_canvas.delete(item_id)
+                    if s_obj.contains_point(cx_c, cy_c):
+                        self.map_mask[r, c] = 1
+                        break
+        
+        # Clear existing visualization cells
+        for item_id in self.field_vis_cells.values():
+            self.drawing_canvas.delete(item_id)
         self.field_vis_cells.clear()
+        
+        # Create new visualization cells for active regions
         for r in range(self.sim_grid_rows):
             for c in range(self.sim_grid_cols):
-                if self.map_mask[r,c]==1: 
-                    x0,y0=self._sim_to_canvas_coords(r,c)
+                if self.map_mask[r, c] == 1:
+                    x0, y0 = self._sim_to_canvas_coords(r, c)
                     # Heatmap cells are now for gp_mean_field
-                    vis_id=self.drawing_canvas.create_rectangle(x0,y0,x0+CELL_SIZE,y0+CELL_SIZE,fill="",outline="",tags="gp_field_cell")
-                    self.field_vis_cells[(r,c)]=vis_id
-        self.drawing_canvas.tag_lower("gp_field_cell") 
+                    vis_id = self.drawing_canvas.create_rectangle(
+                        x0, y0, x0 + CELL_SIZE, y0 + CELL_SIZE,
+                        fill="", outline="", tags="gp_field_cell"
+                    )
+                    self.field_vis_cells[(r, c)] = vis_id
+        self.drawing_canvas.tag_lower("gp_field_cell")
 
-    def toggle_simulation(self): 
+    def get_color_from_value(self, value, min_val, max_val):
+        """Convert a value to a color using matplotlib's coolwarm colormap."""
+        norm = mcolors.Normalize(vmin=min_val, vmax=max_val)
+        cmap = cm.get_cmap('coolwarm')
+        rgba = cmap(norm(value))
+        r, g, b, _ = [int(255 * x) for x in rgba]
+        return f'#{r:02x}{g:02x}{b:02x}'
+
+    def draw_color_scale(self):
+        """Draws the color scale legend for the GP field values."""
+        self.color_scale_canvas.delete("all")
+        min_val = self.current_gp_display_min
+        max_val = self.current_gp_display_max
+        range_val = max_val - min_val
+        if abs(range_val) < 1e-6:
+            range_val = 1e-6
+        num_segments = 50
+        segment_height = (CANVAS_HEIGHT - 2 * AXIS_MARGIN) / num_segments
+        gradient_bar_width = 20
+        x_offset = 10
+        for i in range(num_segments):
+            val = min_val + (i / num_segments) * range_val
+            color = self.get_color_from_value(val, min_val, max_val)
+            y0 = AXIS_MARGIN + i * segment_height
+            y1 = AXIS_MARGIN + (i + 1) * segment_height
+            self.color_scale_canvas.create_rectangle(x_offset, y0, x_offset + gradient_bar_width, y1, fill=color, outline=color)
+        label_x = x_offset + gradient_bar_width + 7 
+        self.color_scale_canvas.create_text(label_x, AXIS_MARGIN, text=f"{max_val:.1f}", anchor=tk.NW, font=LABEL_FONT, fill=LABEL_COLOR)
+        self.color_scale_canvas.create_text(label_x, CANVAS_HEIGHT - AXIS_MARGIN, text=f"{min_val:.1f}", anchor=tk.SW, font=LABEL_FONT, fill=LABEL_COLOR)
+        mid_val = min_val + range_val / 2
+        mid_y = AXIS_MARGIN + (CANVAS_HEIGHT - 2 * AXIS_MARGIN) / 2
+        self.color_scale_canvas.create_text(label_x, mid_y, text=f"{mid_val:.1f}", anchor=tk.W, font=LABEL_FONT, fill=LABEL_COLOR)
+        self.color_scale_canvas.create_text(COLOR_SCALE_WIDTH/2, AXIS_MARGIN/2, text="GP Value", anchor=tk.CENTER, font=LABEL_FONT, fill=LABEL_COLOR)
+
+    def toggle_simulation(self):
         if self.sim_running: # "Clear Field"
             self.sim_running = False
             # self.gp_mean_field.fill(0) # Clear GP field
@@ -744,11 +816,11 @@ class DrawingApp:
                 self.radius_scale.config(state=tk.NORMAL); self.strength_scale.config(state=tk.NORMAL)
         else: # "Initialize & Run GP"
             if not self.shapes_list: self.sim_status_label_var.set("Draw region shapes first!"); return
-            if not SKLEARN_AVAILABLE: self.sim_status_label_var.set("Scikit-learn missing! GP Reconstruction disabled."); return
-
+            if not SKLEARN_AVAILABLE: self.sim_status_label_var.set("Scikit-learn missing! GP Reconstruction disabled."); return 
             self.sim_running = True
             self.prepare_visualization_map() 
             self.gp_update_counter = 0 # Reset GP counter
+            self.diffusion_update_counter = 0 # Reset diffusion counter
             
             # Initial generation of ground truth and first GP prediction
             self.initialize_dirichlet_field(scale_factor=DIRICHLET_SCALE_FACTOR) 
@@ -772,7 +844,6 @@ class DrawingApp:
 
             if not self.sim_job_id: self.run_simulation_step()
 
-
     def draw_field_visualization(self): # Now draws gp_mean_field
         min_val = self.current_gp_display_min; max_val = self.current_gp_display_max
         range_val = max_val - min_val
@@ -784,64 +855,30 @@ class DrawingApp:
                 if cell_id:
                     if self.sim_running and self.map_mask[r_idx, c_idx] == 1:
                         concentration = self.gp_mean_field[r_idx, c_idx] # Use GP field
-                        normalized_conc = (concentration - min_val) / range_val
-                        intensity = int(min(255, max(0, normalized_conc * 255)))
-                        # Color for GP inferred field (e.g., a blue-ish tint)
-                        color = f'#{intensity//2:02x}{intensity//2:02x}{intensity:02x}' # Blueish
-                        # color = f'#00{intensity:02x}00' # Original Green
+                        color = self.get_color_from_value(concentration, min_val, max_val)
                         self.drawing_canvas.itemconfig(cell_id, fill=color, outline=color) 
                     else: self.drawing_canvas.itemconfig(cell_id, fill="", outline="")
-        self.drawing_canvas.tag_raise("user_shape") 
-        for sensor_obj in self.sensors_list: 
-            if sensor_obj.canvas_item_id: self.drawing_canvas.tag_raise(sensor_obj.canvas_item_id)
-            if sensor_obj.influence_vis_id: self.drawing_canvas.tag_raise(sensor_obj.influence_vis_id) 
-
-    def draw_color_scale(self): # Now uses gp_display_min/max
-        self.color_scale_canvas.delete("all")
-        if not self.sim_running: 
-            self.color_scale_canvas.create_text(COLOR_SCALE_WIDTH/2, CANVAS_HEIGHT/2, text="N/A", anchor=tk.CENTER, font=LABEL_FONT)
-            return
-
-        min_val = self.current_gp_display_min
-        max_val = self.current_gp_display_max
-        range_val = max_val - min_val
-        if abs(range_val) < 1e-6: range_val = 1e-6 
-
-        num_segments = 100 
-        segment_height = (CANVAS_HEIGHT - 2 * AXIS_MARGIN) / num_segments 
-        gradient_bar_width = COLOR_SCALE_WIDTH * 0.4 
-        x_offset = COLOR_SCALE_WIDTH * 0.2 # Centered bar a bit more
-
-        for i in range(num_segments):
-            val = max_val - (i / num_segments) * range_val
-            normalized_conc = (val - min_val) / range_val
-            intensity = int(min(255, max(0, normalized_conc * 255)))
-            color = f'#{intensity//2:02x}{intensity//2:02x}{intensity:02x}' # Blueish, matching heatmap
-            
-            y0 = AXIS_MARGIN + i * segment_height
-            y1 = AXIS_MARGIN + (i + 1) * segment_height
-            self.color_scale_canvas.create_rectangle(x_offset, y0, x_offset + gradient_bar_width, y1, fill=color, outline=color)
-
-        label_x = x_offset + gradient_bar_width + 7 
-        self.color_scale_canvas.create_text(label_x, AXIS_MARGIN, text=f"{max_val:.1f}", anchor=tk.NW, font=LABEL_FONT, fill=LABEL_COLOR)
-        self.color_scale_canvas.create_text(label_x, CANVAS_HEIGHT - AXIS_MARGIN, text=f"{min_val:.1f}", anchor=tk.SW, font=LABEL_FONT, fill=LABEL_COLOR)
-        mid_val = min_val + range_val / 2
-        mid_y = AXIS_MARGIN + (CANVAS_HEIGHT - 2 * AXIS_MARGIN) / 2
-        self.color_scale_canvas.create_text(label_x, mid_y, text=f"{mid_val:.1f}", anchor=tk.W, font=LABEL_FONT, fill=LABEL_COLOR)
-        self.color_scale_canvas.create_text(COLOR_SCALE_WIDTH/2, AXIS_MARGIN/2, text="GP Value", anchor=tk.CENTER, font=LABEL_FONT, fill=LABEL_COLOR)
-
 
     def run_simulation_step(self): 
         if not self.sim_running: 
             if self.sim_job_id: self.root.after_cancel(self.sim_job_id); self.sim_job_id = None
             return
         
-        # 1. Generate new ground truth Dirichlet field
-        self.initialize_dirichlet_field(scale_factor=DIRICHLET_SCALE_FACTOR)
+        # 1. Apply diffusion to existing ground truth field periodically for performance
+        self.diffusion_update_counter += 1
+        if self.diffusion_update_counter >= DIFFUSION_UPDATE_EVERY_N_FRAMES:
+            self.apply_diffusion_step(dt=0.1)
+            self.diffusion_update_counter = 0
         
-        # 2. Periodically update GP model based on new ground truth
+        # 2. Periodically regenerate Dirichlet field and update GP model
         self.gp_update_counter += 1
         if self.gp_update_counter >= GP_UPDATE_EVERY_N_FRAMES:
+            # Add small random perturbations to simulate natural variations
+            if np.any(self.map_mask):
+                noise = np.random.normal(0, DIRICHLET_SCALE_FACTOR * 0.02, self.data_field.shape)
+                self.data_field[self.map_mask == 1] += noise[self.map_mask == 1]
+                self.data_field[self.data_field < 0] = 0  # Ensure non-negativity
+            
             self.update_gp_model_and_predict() # This sets gp_mean_field and its display scale
             self.gp_update_counter = 0
         elif not SKLEARN_AVAILABLE or not self.sensors_list: # If GP isn't active, ensure gp_mean_field mirrors data_field
@@ -851,7 +888,7 @@ class DrawingApp:
         self.draw_field_visualization() 
         self.draw_color_scale() 
         
-        self.sim_job_id = self.root.after(100, self.run_simulation_step) 
+        self.sim_job_id = self.root.after(100, self.run_simulation_step)
 
 if __name__ == "__main__":
     app_root = tk.Tk()
