@@ -72,12 +72,11 @@ window = Tk()
 window.geometry("1000x1400")
 window.title("Mars Solar Energy Plotter")
 
-a = Scale(window, from_=0, to=100, length=400, orient=HORIZONTAL, command = plot)
-b = Label(a, text="Surface in m^2",)
-b.pack()
-user_input = a.get()
-a.pack()
-
+#a = Scale(window, from_=0, to=100, length=400, orient=HORIZONTAL, command = plot)
+# b = Label(a, text="Surface in m^2",)
+# b.pack()
+# user_input = a.get()
+# a.pack(ipady=500)
 
 # Create matplotlib figure
 fig, ax = plt.subplots(figsize=(10, 6))
@@ -91,19 +90,32 @@ title_label = Label(frame, text="Mars Solar Energy Calculator")
 title_label.config(font=("Courier", 24))
 title_label.pack(pady=50)
 
-# Input section
-input_frame = Frame(frame)
-input_frame.pack(pady=10)
+# # Input section
 
-Label(input_frame, text="Surface Area in m^2:", font=("Arial", 12)).pack(side=LEFT, padx=5)
-entry = Entry(input_frame, font=("Arial", 12), width=10)
-entry.pack(side=LEFT, padx=5)
-entry.insert(0, "1.0")  # Default value
+label_frame = Frame(frame, border=False)
+label_frame.pack()
+
+input_frame = Frame(frame, border=False)
+input_frame.pack()
+
+plot_button_frame = Frame(frame, border=False)
+plot_button_frame.pack()
+
+# Label(input_frame, text="Surface Area in m^2:", font=("Arial", 12)).pack(side=LEFT, padx=5)
+# entry = Entry(input_frame, font=("Arial", 12), width=10)
+# entry.pack(side=LEFT, padx=5)
+# entry.insert(0, "1.0")  # Default value
 
 # Plot button
-plot_button = Button(input_frame, text="Plot Graph", command=plot, 
+plot_button = Button(plot_button_frame, text="Plot Graph", command=plot, 
                     font=("Arial", 12), bg="lightblue")
 plot_button.pack(side=LEFT, padx=10)
+
+a = Scale(input_frame, from_=0, to=100, length=400, orient=HORIZONTAL, command = plot)
+b = Label(label_frame, text="Surface in m^2", font=("Arial", 20))
+a.pack(side = "bottom")
+b.pack()
+user_input = a.get()
 
 # Status label
 status_label = Label(frame, text="Enter a multiplier and click 'Plot Graph'", 
@@ -116,7 +128,6 @@ info_label = Label(frame, text="This plots energy output over 668 Mars sols (day
 info_label.pack()
 
 # Initial plot
-
 plot(user_input)
 
 
