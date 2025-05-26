@@ -20,8 +20,7 @@ import random
 from tkinter import *
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 # def get_user_input():
 #     #ts basically just clears everything that isnt an integer so there isnt any errors 
 #     while True:
@@ -66,7 +65,14 @@ def plot(var):
     
     # status_label.config(text=f"Plot updated with multiplier: {a.get()}", fg="green")
 
-# Create main window
+def update_limit():
+    try:
+        new_limit = float(entry.get())
+        a.config(to=new_limit)
+        plot(None)  # trigger re-plot
+    except ValueError:
+        status_label.config(text="Please enter a valid number.", fg="red")
+# create main window
     
 window = Tk()
 window.geometry("1000x1400")
@@ -98,27 +104,36 @@ label_frame.pack()
 input_frame = Frame(frame, border=False)
 input_frame.pack()
 
+# random_frame = Frame(frame, border=False)
+# random_frame.pack()
+
 plot_button_frame = Frame(frame, border=False)
 plot_button_frame.pack()
 
-# Label(input_frame, text="Surface Area in m^2:", font=("Arial", 12)).pack(side=LEFT, padx=5)
-# entry = Entry(input_frame, font=("Arial", 12), width=10)
-# entry.pack(side=LEFT, padx=5)
-# entry.insert(0, "1.0")  # Default value
-
 # Plot button
-plot_button = Button(plot_button_frame, text="Plot Graph", command=plot, 
-                    font=("Arial", 12), bg="lightblue")
-plot_button.pack(side=LEFT, padx=10)
+
+interactive = NavigationToolbar2Tk(canvas, frame, pack_toolbar=False)
+interactive.update()
+interactive.pack()
 
 a = Scale(input_frame, from_=0, to=100, length=400, orient=HORIZONTAL, command = plot)
-b = Label(label_frame, text="Surface in m^2", font=("Arial", 20))
+b = Label(label_frame, text="Surface Area in m^2", font=("Arial", 20))
 a.pack(side = "bottom")
 b.pack()
 user_input = a.get()
 
+plot_button = Button(plot_button_frame, text="Change Limit of Slider (m^2)", command=update_limit, 
+                    font=("Arial", 12), bg="lightblue")
+plot_button.pack(side=RIGHT, padx=10)
+
+Label(plot_button_frame, text="Surface Area in m^2:", font=("Arial", 12)).pack(side=LEFT, padx=5)
+entry = Entry(plot_button_frame, font=("Arial", 12), width=10)
+entry.pack(side=TOP, padx=5)
+entry.insert(0, "100")  # Default value        
+
+
 # Status label
-status_label = Label(frame, text="Enter a multiplier and click 'Plot Graph'", 
+status_label = Label(frame, text="Enter a value and click 'Change Limit (m^2)' to update the plot.", 
                     font=("Arial", 10), fg="blue")
 status_label.pack(pady=5)
 
@@ -128,7 +143,7 @@ info_label = Label(frame, text="This plots energy output over 668 Mars sols (day
 info_label.pack()
 
 # Initial plot
-plot(user_input)
+plot(user_input)  # Initial plot with default value)
 
 
 window.mainloop()

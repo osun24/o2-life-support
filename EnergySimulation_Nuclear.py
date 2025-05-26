@@ -9,5 +9,5 @@ efficiency = round(random.uniform(0.20, 0.25), 2) # based on dust and atmospheri
 
 user_input_mass = int(input("How many kg of Pu-239: ")) #kg
 
-energy_from_nuclear = (energy_per_second*user_input_mass*efficiency)
+energy_from_nuclear = abs(energy_per_second*user_input_mass*efficiency)
 print("Energy from nuclear: " + str(round(energy_from_nuclear, 2)) + " kJ/d")
