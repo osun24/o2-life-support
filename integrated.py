@@ -99,17 +99,6 @@ class RoomType(Enum):
         }
         return colors.get(room_type, "#CCCCCC") 
 
-    @classmethod
-    def get_default_population_capacity(cls, room_type):
-        capacities = {
-            cls.LIVING_QUARTERS: 2,
-            cls.GREENHOUSE_POTATOES: 0, 
-            cls.GREENHOUSE_ALGAE: 0,
-            cls.SOLAR_PANELS: 0, # Solar panels have no population
-            cls.NONE: 0
-        }
-        return capacities.get(room_type, 0)
-
 class Sensor:
     def __init__(self, x_canvas, y_canvas, o2_variance=SENSOR_DEFAULT_O2_VARIANCE, co2_variance=SENSOR_DEFAULT_CO2_VARIANCE, sensing_radius=CELL_SIZE * 0.75):
         self.x = x_canvas; self.y = y_canvas
@@ -165,8 +154,6 @@ class RoomShape:
         self.color = RoomType.get_color(self.room_type)
         self.canvas_item_id = None; self.selected = False
         self.o2_level = NORMAL_O2_PERCENTAGE; self.co2_level = NORMAL_CO2_PPM
-        self.population = RoomType.get_default_population_capacity(room_type)
-        self.population_fixed_by_user = False 
         self.breach_level = 0.0
         
     def draw(self, canvas): raise NotImplementedError
@@ -190,7 +177,6 @@ class RoomShape:
         return area_m2 * 2.5 * 1000 
     def update_room_type(self, new_type, canvas):
         self.room_type = new_type; self.color = RoomType.get_color(new_type)
-        if not self.population_fixed_by_user: self.population = RoomType.get_default_population_capacity(new_type)
         if self.canvas_item_id: canvas.itemconfig(self.canvas_item_id, fill=self.color)
     def get_center_canvas_coords(self): raise NotImplementedError
     def get_shapely_polygon(self):
@@ -334,7 +320,9 @@ class DrawingApp(ttk.Frame):
         self.room_params_frame = ttk.LabelFrame(elem_param_f,text="Selected Room Parameters",padding="10")
         self.sensor_params_frame = ttk.LabelFrame(elem_param_f,text="Selected Sensor Parameters",padding="10")
         canvas_area_f = ttk.Frame(main_f); canvas_area_f.pack(side=tk.TOP,fill=tk.BOTH,expand=True,pady=(0,10))
-        self.drawing_canvas = tk.Canvas(canvas_area_f,width=CANVAS_WIDTH,height=CANVAS_HEIGHT,bg="white",relief=tk.SUNKEN,borderwidth=1); self.drawing_canvas.pack(side=tk.LEFT,padx=(0,COLOR_SCALE_PADDING),pady=0,expand=True,fill=tk.BOTH)
+        self.drawing_canvas = tk.Canvas(canvas_area_f, bg="white", relief=tk.SUNKEN, borderwidth=1)
+        self.drawing_canvas.pack(side=tk.LEFT, padx=(0, COLOR_SCALE_PADDING), pady=0, expand=True, fill=tk.BOTH)
+        self.drawing_canvas.bind("<Configure>", self._on_canvas_resize)
         self.color_scale_canvas = tk.Canvas(canvas_area_f,width=COLOR_SCALE_WIDTH,height=CANVAS_HEIGHT,bg="whitesmoke",relief=tk.SUNKEN,borderwidth=1); self.color_scale_canvas.pack(side=tk.RIGHT,pady=0,fill=tk.Y)
         bottom_sim_f = ttk.Frame(main_f); bottom_sim_f.pack(side=tk.BOTTOM,fill=tk.X,pady=(5,0))
         self.gp_display_controls_frame = ttk.LabelFrame(bottom_sim_f,text="GP Inferred Field Display",padding="5"); self.gp_display_controls_frame.pack(side=tk.LEFT,padx=5,fill=tk.X,expand=True)
@@ -355,7 +343,6 @@ class DrawingApp(ttk.Frame):
         self.selected_room_id_label=ttk.Label(self.room_params_frame,text="Room ID: -"); self.selected_room_id_label.grid(row=0,column=0,columnspan=2,sticky=tk.W,padx=2,pady=2)
         ttk.Label(self.room_params_frame,text="Room Type:").grid(row=1,column=0,sticky=tk.W,padx=2); self.room_type_var=tk.StringVar()
         self.room_type_options=[rt.name for rt in RoomType]; self.room_type_menu=ttk.OptionMenu(self.room_params_frame,self.room_type_var,RoomType.NONE.name,*self.room_type_options,command=self._update_selected_room_type); self.room_type_menu.grid(row=1,column=1,sticky=tk.EW,padx=2)
-        ttk.Label(self.room_params_frame,text="Population:").grid(row=2,column=0,sticky=tk.W,padx=2); self.population_var=tk.IntVar(value=0); self.population_spinbox=ttk.Spinbox(self.room_params_frame,from_=0,to=20,textvariable=self.population_var,width=5,command=self._update_selected_room_population); self.population_spinbox.grid(row=2,column=1,sticky=tk.W,padx=2)
         ttk.Label(self.room_params_frame,text="Breach (0-1):").grid(row=3,column=0,sticky=tk.W,padx=2); self.breach_var=tk.DoubleVar(value=0.0); self.breach_scale=ttk.Scale(self.room_params_frame,from_=0.0,to=1.0,variable=self.breach_var,orient=tk.HORIZONTAL,length=100,command=self._update_selected_room_breach); self.breach_scale.grid(row=3,column=1,sticky=tk.EW,padx=2); self.breach_label=ttk.Label(self.room_params_frame,text="0.0"); self.breach_label.grid(row=3,column=2,sticky=tk.W,padx=2)
         self.room_o2_label=ttk.Label(self.room_params_frame,text="O2: - %"); self.room_o2_label.grid(row=4,column=0,columnspan=3,sticky=tk.W,padx=2,pady=2)
         self.room_co2_label=ttk.Label(self.room_params_frame,text="CO2: - ppm"); self.room_co2_label.grid(row=5,column=0,columnspan=3,sticky=tk.W,padx=2,pady=2)
@@ -369,6 +356,16 @@ class DrawingApp(ttk.Frame):
         self.sim_status_label_var=tk.StringVar(value="Sim Stopped. Editing enabled."); ttk.Label(self.sim_toggle_frame,textvariable=self.sim_status_label_var).pack(side=tk.LEFT,padx=5); self.sim_toggle_button=ttk.Button(self.sim_toggle_frame,text="Initialize & Run Sim",command=self.toggle_simulation); self.sim_toggle_button.pack(side=tk.LEFT,padx=5)
         self.draw_visual_grid_and_axes(); self.draw_color_scale(); self.drawing_canvas.bind("<Button-1>",self.handle_mouse_down); self.drawing_canvas.bind("<B1-Motion>",self.handle_mouse_drag); self.drawing_canvas.bind("<ButtonRelease-1>",self.handle_mouse_up)
         self._update_room_type_areas_display(); self._show_element_params_frame()
+        
+    # Resize canvas
+    def _on_canvas_resize(self, event):
+        # update globals (or you can switch to self.CANVAS_WIDTH etc.)
+        global CANVAS_WIDTH, CANVAS_HEIGHT
+        CANVAS_WIDTH, CANVAS_HEIGHT = event.width, event.height
+        # re‐draw grid, color‐scale, and all elements at new size
+        self.draw_visual_grid_and_axes()
+        self.draw_color_scale()
+        self.prepare_visualization_map_and_fields()
 
     def _update_room_type_areas_display(self):
         areas={
@@ -417,14 +414,10 @@ class DrawingApp(ttk.Frame):
                         self.room_type_var.set(original_type.name) 
                         return 
             self.selected_room_obj.update_room_type(new_type,self.drawing_canvas) 
-            self.population_var.set(self.selected_room_obj.population) 
-            self.selected_room_obj.population_fixed_by_user=False
             self.sim_status_label_var.set("Room type changed.")
             self.prepare_visualization_map_and_fields()
             self._update_room_type_areas_display()
 
-    def _update_selected_room_population(self):
-        if self.selected_room_obj: self.selected_room_obj.population=self.population_var.get(); self.selected_room_obj.population_fixed_by_user=True; self.sim_status_label_var.set("Room population changed.")
     def _update_selected_room_breach(self,val_str):
         if self.selected_room_obj: breach_lvl=float(val_str); self.selected_room_obj.breach_level=breach_lvl; self.breach_label.config(text=f"{breach_lvl:.2f}"); self.sim_status_label_var.set("Room breach level changed.")
     def _update_selected_sensor_params(self,val_str=None):
@@ -434,7 +427,7 @@ class DrawingApp(ttk.Frame):
     def _show_element_params_frame(self):
         self.room_params_frame.pack_forget(); self.sensor_params_frame.pack_forget()
         if self.selected_room_obj:
-            self.room_params_frame.pack(side=tk.TOP,padx=5,pady=5,fill=tk.X); self.selected_room_id_label.config(text=f"Room ID: {self.selected_room_obj.id}"); self.room_type_var.set(self.selected_room_obj.room_type.name); self.population_var.set(self.selected_room_obj.population); self.breach_var.set(self.selected_room_obj.breach_level); self.breach_label.config(text=f"{self.selected_room_obj.breach_level:.2f}"); self.room_o2_label.config(text=f"O2: {self.selected_room_obj.o2_level:.2f}%"); self.room_co2_label.config(text=f"CO2: {self.selected_room_obj.co2_level:.0f} ppm")
+            self.room_params_frame.pack(side=tk.TOP,padx=5,pady=5,fill=tk.X); self.selected_room_id_label.config(text=f"Room ID: {self.selected_room_obj.id}"); self.room_type_var.set(self.selected_room_obj.room_type.name); self.breach_var.set(self.selected_room_obj.breach_level); self.breach_label.config(text=f"{self.selected_room_obj.breach_level:.2f}"); self.room_o2_label.config(text=f"O2: {self.selected_room_obj.o2_level:.2f}%"); self.room_co2_label.config(text=f"CO2: {self.selected_room_obj.co2_level:.0f} ppm")
         elif self.selected_sensor_obj:
             self.sensor_params_frame.pack(side=tk.TOP,padx=5,pady=5,fill=tk.X); s_idx=self.sensors_list.index(self.selected_sensor_obj) if self.selected_sensor_obj in self.sensors_list else -1; self.selected_sensor_id_label.config(text=f"Sensor ID: S{s_idx}"); self.sensor_o2_var_var.set(self.selected_sensor_obj.o2_variance); self.sensor_co2_var_var.set(self.selected_sensor_obj.co2_variance); self.sensor_o2_var_label.config(text=f"{self.selected_sensor_obj.o2_variance:.2f}"); self.sensor_co2_var_label.config(text=f"{self.selected_sensor_obj.co2_variance:.1f}"); o2r,co2r=self.selected_sensor_obj.last_o2_reading,self.selected_sensor_obj.last_co2_reading; self.sensor_o2_reading_label.config(text=f"O2 Read: {o2r:.2f}%" if o2r is not None else "N/A"); self.sensor_co2_reading_label.config(text=f"CO2 Read: {co2r:.0f} ppm" if co2r is not None else "N/A")
     def _sim_to_canvas_coords_center(self,r,c): return AXIS_MARGIN+c*CELL_SIZE+CELL_SIZE/2, AXIS_MARGIN+r*CELL_SIZE+CELL_SIZE/2
@@ -769,7 +762,6 @@ class DrawingApp(ttk.Frame):
             return
         for r in self.rooms_list:
             if r.get_volume_liters()<=0: continue
-            if r.population>0: o2c,co2p=HUMAN_O2_CONSUMPTION_PER_HOUR_PERSON*r.population*SIM_DT_HOURS,HUMAN_CO2_PRODUCTION_PPM_PER_HOUR_PERSON*r.population*SIM_DT_HOURS; r.o2_level,r.co2_level=max(0,r.o2_level-o2c),max(0,r.co2_level+co2p)
             if r.breach_level>0: bex_f=r.breach_level*DEFAULT_BREACH_FLOW_RATE_PER_HOUR*SIM_DT_HOURS; o2m,co2m=(r.o2_level-MARS_O2_PERCENTAGE)*bex_f,(r.co2_level-MARS_CO2_PPM)*bex_f; r.o2_level,r.co2_level=max(0,r.o2_level-o2m),max(0,r.co2_level-co2m)
         self.o2_field_ground_truth.fill(MARS_O2_PERCENTAGE); self.co2_field_ground_truth.fill(MARS_CO2_PPM)
         for ri in range(self.sim_grid_rows):
@@ -939,6 +931,7 @@ class EnergySimulationTabBase(ttk.Frame):
         self.canvas = FigureCanvasTkAgg(self.fig, master=self)
         self.canvas_widget = self.canvas.get_tk_widget()
         self.canvas_widget.pack(side=tk.TOP, fill=tk.BOTH, expand=True, pady=5)
+        self.canvas_widget.bind("<Configure>", self._on_canvas_resize)
         self.fig.subplots_adjust(bottom=0.15, top=0.9) 
 
         self.controls_frame = ttk.Frame(self) # Made an attribute for SolarEnergyTab to access
@@ -969,6 +962,12 @@ class EnergySimulationTabBase(ttk.Frame):
             self.status_label.pack(pady=(2,0))
             # Initial plot will be triggered by refresh from drawing_app
 
+    def _on_canvas_resize(self, event):
+        width, height = event.width, event.height
+        dpi = self.fig.get_dpi()
+        self.fig.set_size_inches(width / dpi, height / dpi)
+        self.canvas.draw()
+    
     def plot_energy(self, val=None): raise NotImplementedError("Subclasses must implement plot_energy.")
     def update_limit(self): # This method is only relevant if create_slider_controls was True
         if hasattr(self, 'entry_limit'):
