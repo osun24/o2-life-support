@@ -59,19 +59,46 @@ def water_consumption():
 def plot(var):
     ax.clear()
     global colonySize, daily_consumption
-    daily_consumption = []
+    # daily_consumption = []
     colonySize = a.get()
 
+    age = np.random.beta(2, 8, size = 668) * (70 - starting_age) + starting_age # skewed towards younger ages
+    activity = np.random.normal(1.5, 0.25, size = 668)
+    is_male = np.random.choice([True, False])
+
+    # if is_male:
+    #     body_size = np.random.normal(80.3, 9.5, size = 668) # mass (kg)
+    # else:
+    #     body_size = np.random.normal(67.5, 9.4, size = 668) # mass (kg)
+
+    # water_intake = (body_size * 0.035)
+
+    age_factor = 1/(1+((age) - starting_age) * 0.001) # made to 
+    water_for_activity = activity # hours of overall activity per day
+
+    is_male = np.random.choice([True, False])
+
+    if is_male:
+        body_size = np.random.normal(80.3, 9.5, size = 668) # mass (kg)
+    else:
+        body_size = np.random.normal(67.5, 9.4, size = 668) # mass (kg)
+        
+    age = np.random.beta(2, 8) * (70 - starting_age) + starting_age
+    age_factor = 1/(1+((age) - starting_age) * 0.001)
     # np.random.normal(loc: center, stdev, s   
     
     x = np.arange(1, 669)  # 668 sols (1 to 668)
 
+    # total_water = (water_intake * age_factor) + water_for_activity
     # for person in range(colonySize):
     #     daily_consumption += water_consumption()
-    for sol in x:
-        daily_consumption.append(sum([water_consumption() for _ in range(colonySize)]))
+    # for sol in x:
+    #     daily_consumption.append(sum([water_consumption() for _ in range(colonySize)]))
 
-    y =  np.array(water_consumption()) 
+    # y =  np.array(water_consumption()) 
+    # total_water = (water_intake * age_factor) + water_for_activity
+
+    y = colonySize *((body_size * 0.035) * ((1/(1+((age) - starting_age) * 0.001))) + activity)
     '''
     # MAX: 586 * 1 * 0.27 * 0.9 * 88775 * 0.5 * 0.001 = 6320.691225
     # MIN: 586 * 1 * 0.20 * 0.* 88775 * 0.5 * 0.001 = 2601.1075
@@ -100,7 +127,7 @@ window = Tk()
 window.geometry("1000x1400")
 window.title("Mars Solar Energy Plotter")
 
-#a = Scale(window, from_=0, to=100, length=400, orient=HORIZONTAL, command = plot)
+# a = Scale(window, from_=0, to=100, length=400, orient=HORIZONTAL, command = plot)
 # b = Label(a, text="Surface in m^2",)
 # b.pack()
 # colonySize = a.get()
