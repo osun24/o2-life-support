@@ -20,7 +20,7 @@ def plot(var):
     user_input = a.get()
     # np.random.normal(loc: center, stdev, size)
     energy_per_second = 3.318*(10^-10) #J/s/kg
-    efficiency = np.random.normal(0.20, 0.25, size = 668) # based on dust and atmospheric pressure
+    efficiency = np.random.normal(0.225, (0.25-0.225)/3, size = 668) # based on dust and atmospheric pressure
     
     x = np.arange(1, 669)  # 668 sols (1 to 668)
     # y = np.arange(0, 1300 * user_input, size=668)
@@ -35,7 +35,7 @@ def plot(var):
     # MIN: 586 * 1 * 0.20 * 0.5 * 88775 * 0.5 * 0.001 = 2601.1075
     '''
     ax.clear()
-    ax.scatter(x, y, s=20, color="blue", alpha=0.6, label=f'Energy (KJ) : 1300 * {user_input}')# figure out wtf this does #this changes the size of the data points 
+    ax.scatter(x, y, s=20, color="blue", alpha=0.6) #label=f'Energy (KJ) : 1300 * {user_input}')# figure out wtf this does #this changes the size of the data points 
     ax.set_title("Mars Energy Plot")
     ax.set_xlabel("Sols (Mars Days)")
     ax.set_ylabel("Energy Output (KJ)")
@@ -96,7 +96,8 @@ interactive = NavigationToolbar2Tk(canvas, frame, pack_toolbar=False)
 interactive.update()
 interactive.pack()
 
-a = Scale(input_frame, from_=0, to=100, length=400, orient=HORIZONTAL, command = plot)
+a = Scale(input_frame, from_=0, to=1000, length=400, orient=HORIZONTAL, command = plot)
+a.set(700)
 b = Label(label_frame, text="Amount of Pu-239 (in Kg)", font=("Arial", 20))
 a.pack(side = "bottom")
 b.pack()
@@ -109,8 +110,7 @@ plot_button.pack(side=RIGHT, padx=10)
 Label(plot_button_frame, text="Amount of PU-239:", font=("Arial", 12)).pack(side=LEFT, padx=5)
 entry = Entry(plot_button_frame, font=("Arial", 12), width=10)
 entry.pack(side=TOP, padx=5)
-entry.insert(0, "100")  # Default value        
-
+entry.insert(0, "100")  # Default value
 
 # Status label
 status_label = Label(frame, text="Enter a value and click 'Change Limit (kg)' to update the plot.", 
