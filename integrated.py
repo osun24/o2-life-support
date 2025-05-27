@@ -1054,7 +1054,24 @@ class MainApplication(tk.Tk):
         self.title("Integrated Mars Life Support & Habitat Dashboard")
         self.geometry("1200x950") 
 
-        self.notebook_widget_ref = ttk.Notebook(self) 
+        # make the whole app scrollable
+        container = ttk.Frame(self)
+        container.pack(fill='both', expand=True)
+        canvas = tk.Canvas(container)
+        vsb = ttk.Scrollbar(container, orient='vertical',   command=canvas.yview)
+        hsb = ttk.Scrollbar(container, orient='horizontal', command=canvas.xview)
+        canvas.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        vsb.pack(side='right',  fill='y')
+        hsb.pack(side='bottom', fill='x')
+        canvas.pack(side='left',  fill='both', expand=True)
+        scrollable_frame = ttk.Frame(canvas)
+        canvas.create_window((0,0), window=scrollable_frame, anchor='nw')
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        # place notebook in scrollable frame
+        self.notebook_widget_ref = ttk.Notebook(scrollable_frame)
         self.notebook_widget_ref.pack(expand=True, fill='both', padx=5, pady=5)
         
         # Initialize tabs that DrawingApp might need to update
