@@ -119,6 +119,14 @@ SENSOR_READING_NOISE_STD_CO2 = math.sqrt(SENSOR_DEFAULT_CO2_VARIANCE) # Std dev 
 
 # Breach Constants
 DEFAULT_BREACH_FLOW_RATE_PER_HOUR = 0.1 # Percentage of volume exchanged per hour per unit breach size
+
+# Door Constants
+DOOR_WIDTH_PIXELS = CELL_SIZE * 0.8
+DOOR_COLOR_OPEN = "green"
+DOOR_COLOR_CLOSED = "red"
+DOOR_FLOW_RATE_OPEN_PER_HOUR = 0.2 # Gas exchange rate when open (fraction of volume difference)
+DOOR_FLOW_RATE_CLOSED_PER_HOUR = 0.005 # Slight leak for closed doors
+
 # --- Sensor Class ---
 class Sensor:
     def __init__(self, x_canvas, y_canvas,
@@ -193,6 +201,7 @@ class RoomShape:
         self.co2_level = NORMAL_CO2_PPM
         self.population = 0 #RoomType.get_default_population_capacity(self.room_type)
         self.breach_level = 0.0  # 0.0 to 1.0, representing severity/size of breach
+        self.connected_doors = [] # List of Door objects
 
     def draw(self, canvas): raise NotImplementedError
     def contains_point(self, px, py): raise NotImplementedError
@@ -331,10 +340,47 @@ class RoomCircle(RoomShape):
     def get_shapely_polygon(self):
         return Point(self.x, self.y).buffer(self.radius)
 
-# Door class removed
+class Door:
+    _id_counter = 0
+    def __init__(self, room1_id: int, room2_id: int, position: tuple, app_ref):
+        self.id = Door._id_counter
+        Door._id_counter += 1
+        self.room1_id = room1_id
+        self.room2_id = room2_id # Can be None for external door
+        self.position = position # (x,y) center of the door on canvas
+        self.is_open = True
+        self.canvas_item_id = None
+        self.app = app_ref # Reference to DrawingApp for finding rooms
+
+    def draw(self, canvas):
+        x, y = self.position
+        half_width = DOOR_WIDTH_PIXELS / 2
+        color = DOOR_COLOR_OPEN if self.is_open else DOOR_COLOR_CLOSED
+        self.canvas_item_id = canvas.create_rectangle(
+            x - half_width, y - half_width, x + half_width, y + half_width, # Make it a square for now
+            fill=color, outline="black", tags=("door", f"door_{self.id}")
+        )
+
+    def toggle_state(self, canvas):
+        self.is_open = not self.is_open
+        color = DOOR_COLOR_OPEN if self.is_open else DOOR_COLOR_CLOSED
+        if self.canvas_item_id:
+            canvas.itemconfig(self.canvas_item_id, fill=color)
+
+    def contains_point(self, px, py):
+        x, y = self.position
+        half_width = DOOR_WIDTH_PIXELS / 2
+        return (x - half_width <= px <= x + half_width) and \
+               (y - half_width <= py <= y + half_width)
+
+    def get_connected_rooms(self):
+        room1 = self.app.get_room_by_id(self.room1_id)
+        room2 = self.app.get_room_by_id(self.room2_id) if self.room2_id is not None else None
+        return room1, room2
 
 # --- Main Application ---
-class DrawingApp:    def __init__(self, master_root):
+class DrawingApp:
+    def __init__(self, master_root):
         self.root = master_root
         self.root.title("Mars Habitat Life Support Simulator (GP Reconstruction)")
 
@@ -343,12 +389,16 @@ class DrawingApp:    def __init__(self, master_root):
         self.selected_room_obj = None
         self.sensors_list = []
         self.selected_sensor_obj = None
+        self.doors_list = []
+        self.selected_door_obj = None
 
         self.is_dragging = False
         self.was_resizing_session = False
         self.drag_action_occurred = False
         self.drag_offset_x = 0
         self.drag_offset_y = 0
+        
+        self.temp_door_room1_id = None # For multi-click door placement
 
         self.sim_grid_rows = (CANVAS_HEIGHT - AXIS_MARGIN) // CELL_SIZE
         self.sim_grid_cols = (CANVAS_WIDTH - AXIS_MARGIN) // CELL_SIZE
@@ -432,18 +482,25 @@ class DrawingApp:    def __init__(self, master_root):
         self.gp_display_controls_frame.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
 
         self.sim_toggle_frame = ttk.LabelFrame(sim_status_bottom_frame, text="Simulation Control", padding="5")
-        self.sim_toggle_frame.pack(side=tk.LEFT, padx=5, fill=tk.X)        # --- Populate Drawing Controls Frame ---
+        self.sim_toggle_frame.pack(side=tk.LEFT, padx=5, fill=tk.X)
+
+
+        # --- Populate Drawing Controls Frame ---
         ttk.Label(self.drawing_controls_frame, text="Mode:").grid(row=0, column=0, columnspan=2, padx=2, pady=2, sticky=tk.W)
         self.mode_var = tk.StringVar(value=self.current_mode)
         modes = [("Select", "select"), ("Draw Room (Rect)", "rectangle"),
-                 ("Draw Room (Circle)", "circle"), ("Add Sensor", "add_sensor")]
+                 ("Draw Room (Circle)", "circle"), ("Add Sensor", "add_sensor"),
+                 ("Add Door", "add_door")]
         for i, (text, mode_val) in enumerate(modes):
             rb = ttk.Radiobutton(self.drawing_controls_frame, text=text, variable=self.mode_var, value=mode_val, command=self.set_current_mode)
             rb.grid(row=i+1, column=0, columnspan=2, padx=2, pady=2, sticky=tk.W)
-          self.delete_button = ttk.Button(self.drawing_controls_frame, text="Delete Selected", command=self.delete_selected_item)
+        
+        self.delete_button = ttk.Button(self.drawing_controls_frame, text="Delete Selected", command=self.delete_selected_item)
         self.delete_button.grid(row=len(modes)+1, column=0, padx=5, pady=5, sticky=tk.W)
         self.clear_sensors_button = ttk.Button(self.drawing_controls_frame, text="Clear All Sensors", command=self.clear_all_sensors)
         self.clear_sensors_button.grid(row=len(modes)+1, column=1, padx=5, pady=5, sticky=tk.W)
+        self.clear_doors_button = ttk.Button(self.drawing_controls_frame, text="Clear All Doors", command=self.clear_all_doors)
+        self.clear_doors_button.grid(row=len(modes)+2, column=0, padx=5, pady=5, sticky=tk.W)
 
 
         self.union_area_label_var = tk.StringVar(value="Total Room Area: N/A")
@@ -592,18 +649,31 @@ class DrawingApp:    def __init__(self, master_root):
             o2_read = self.selected_sensor_obj.last_o2_reading
             co2_read = self.selected_sensor_obj.last_co2_reading
             self.sensor_o2_reading_label.config(text=f"O2 Reading: {o2_read:.2f}%" if o2_read is not None else "O2 Reading: N/A")
-            self.sensor_co2_reading_label.config(text=f"CO2 Reading: {co2_read:.0f} ppm" if co2_read is not None else "CO2 Reading: N/A")    def _sim_to_canvas_coords_center(self, sim_row, sim_col):
-        return AXIS_MARGIN + sim_col*CELL_SIZE + CELL_SIZE/2, AXIS_MARGIN + sim_row*CELL_SIZE + CELL_SIZE/2    def handle_escape_key(self, event=None):
+            self.sensor_co2_reading_label.config(text=f"CO2 Reading: {co2_read:.0f} ppm" if co2_read is not None else "CO2 Reading: N/A")
+
+    def _sim_to_canvas_coords_center(self, sim_row, sim_col):
+        return AXIS_MARGIN + sim_col*CELL_SIZE + CELL_SIZE/2, AXIS_MARGIN + sim_row*CELL_SIZE + CELL_SIZE/2
+
+    def handle_escape_key(self, event=None):
         if self.sim_running:
             self.sim_status_label_var.set("Sim Running. Editing locked. Press 'Clear Sim' to unlock.")
             return
 
-        if self.current_mode not in ["select", "rectangle", "circle", "add_sensor"]: # If in a drawing mode
+        if self.current_mode == "add_door" and self.temp_door_room1_id is not None:
+            self.temp_door_room1_id = None # Cancel door placement
+            self.sim_status_label_var.set("Door placement cancelled. Select first room for door.")
+            self.mode_var.set("select"); self.set_current_mode() # Revert to select
+            return
+
+        if self.current_mode not in ["select", "rectangle", "circle", "add_sensor", "add_door"]: # If in a drawing mode
             self.mode_var.set("select"); self.set_current_mode()
         elif self.selected_room_obj:
             self.selected_room_obj.deselect(self.drawing_canvas); self.selected_room_obj = None
         elif self.selected_sensor_obj:
             self.selected_sensor_obj.deselect(self.drawing_canvas); self.selected_sensor_obj = None
+        elif self.selected_door_obj:
+            # Doors don't have a separate select/deselect visual state other than toggle
+            self.selected_door_obj = None 
         self._show_element_params_frame()
 
 
@@ -637,6 +707,14 @@ class DrawingApp:    def __init__(self, master_root):
                 self.selected_sensor_obj.deselect(self.drawing_canvas); self.selected_sensor_obj = None
             self._show_element_params_frame()
         
+        if self.current_mode == "add_door":
+            self.temp_door_room1_id = None
+            self.sim_status_label_var.set("Door Mode: Click first room for door.")
+        elif old_mode == "add_door" and self.temp_door_room1_id is not None: # Cancel pending door
+            self.temp_door_room1_id = None
+            self.sim_status_label_var.set("Door placement cancelled.")
+
+
         self.is_dragging = False; self.was_resizing_session = False; self.drag_action_occurred = False
 
     def draw_visual_grid_and_axes(self):
@@ -804,7 +882,7 @@ class DrawingApp:    def __init__(self, master_root):
                 # For now, let's make it simpler: a door needs two distinct points or edges.
                 # This click-based placement is very basic.
                 # A better way would be to click on edges.
-                # For now, place door at the click location, associated with room1 and room2.
+                # For now, place door at click location, associated with room1 and room2.
                 pass # Allow door on same room, implies external if logic handles it.
 
             # Create door at the click position (eff_x, eff_y)
@@ -1287,7 +1365,6 @@ class DrawingApp:    def __init__(self, master_root):
                 # Let's use the direct percentage change from better-sample, assuming it's for a nominal volume.
                 # Scale effect by (NominalVolume / ActualVolume)
                 # For now, assume constants are fine as direct % change.
-                
                 
                 o2_consumed_percent = HUMAN_O2_CONSUMPTION_PER_HOUR_PERSON * room.population * SIM_DT_HOURS
                 co2_produced_ppm = HUMAN_CO2_PRODUCTION_PPM_PER_HOUR_PERSON * room.population * SIM_DT_HOURS
