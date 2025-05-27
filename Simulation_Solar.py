@@ -49,7 +49,8 @@ def plot(var):
     # Energy (kJ)= Martian_Irradiance × Panel_Area × Panel_Efficiency × Dust_Efficiency × Time
     
                         # the integer in place here should be user_input
-    y = MARTIAN_IRR * user_input  * panelEfficiency * dustEfficiencyVariance * SECONDS * 0.001 # convert to kJ
+    
+    y = (MARTIAN_IRR * user_input  * panelEfficiency * dustEfficiencyVariance * SECONDS * 0.001) # convert to kJ
     '''
     # MAX: 586 * 1 * 0.27 * 0.9 * 88775 * 0.5 * 0.001 = 6320.691225
     # MIN: 586 * 1 * 0.20 * 0.5 * 88775 * 0.5 * 0.001 = 2601.1075
@@ -143,7 +144,7 @@ info_label = Label(frame, text="This plots energy output over 668 Mars sols (day
 info_label.pack()
 
 # Initial plot
-plot(user_input)  # Initial plot with default value)
+plot(user_input)  # Initial plot with default value
 
 
 window.mainloop()
