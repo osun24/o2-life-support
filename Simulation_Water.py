@@ -3,58 +3,69 @@ from tkinter import *
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-# def get_colonySize():
-#     #ts basically just clears everything that isnt an integer so there isnt any errors 
-#     while True:
-#         try:
-#             colonySize = float(input("Enter your value here: ")) # mars surface area in solar panels M^2
-#             return colonySize
-#         except ValueError:
-#             # status_label.config(text="Please enter a valid number.", fg="red")
-#             print("Invalid Input, Please Try Again")
+
 colonySize = 0 # people
 starting_age = 25
 start_size = 59  # in kg
 avg_activity = 1.5  # in hours
-# avg_oxygen = np.random.normal(0.84, 0.02)  # kg per day
+
 colony_float = float(colonySize)
 total_hours = 1.02749125 * 24
 water_intake = 0
 daily_consumption = 0
 
-def water_consumption():
-    age = np.random.beta(2, 8, size = 668) * (70 - starting_age) + starting_age # skewed towards younger ages
-    activity = np.random.normal(1.5, 0.25, size = 668)
-    is_male = np.random.choice([True, False])
+# def water_consumption():
+#     activity = np.random.normal(1.5, 0.25, size = 15)
+#     is_male = np.random.choice([True, False])
+#     water_intake = (body_size * 0.035)
+#     water_for_activity = activity # hours of overall activity per day
 
-    # if is_male:
-    #     body_size = np.random.normal(80.3, 9.5, size = 668) # mass (kg)
-    # else:
-    #     body_size = np.random.normal(67.5, 9.4, size = 668) # mass (kg)
+#     # print("Is male : " + str(is_male))
+#     # print("age is : " + str(age) + "/" + str(age_factor)) #years   
+#     # print("size is : " + str(body_size) + "/" + str(water_intake)) #kg
+#     # print("Activity is : "  + str(activity) + "/" + str(water_for_activity)) #kg
 
-    # water_intake = (body_size * 0.035)
+#     if is_male:
+#         body_size = np.random.normal(80.3, 9.5, size = 15) # mass (kg)
+#     else:
+#         body_size = np.random.normal(67.5, 9.4, size = 15) # mass (kg)
+        
+#     age = np.random.beta(2, 8) * (70 - starting_age) + starting_age
+#     age_factor = 1/(1+((age) - starting_age) * 0.001)
 
-    age_factor = 1/(1+((age) - starting_age) * 0.001) # made to 
-    water_for_activity = activity # hours of overall activity per day
+#     total_water = (water_intake * age_factor) + water_for_activity # L/day
 
-    # print("Is male : " + str(is_male))
-    # print("age is : " + str(age) + "/" + str(age_factor)) #years   
-    # print("size is : " + str(body_size) + "/" + str(water_intake)) #kg
-    # print("Activity is : "  + str(activity) + "/" + str(water_for_activity)) #kg
+#     return total_water
 
+def createPerson():
+    age = np.random.beta(2, 8, size = 15) * (70 - starting_age) + starting_age
     is_male = np.random.choice([True, False])
 
     if is_male:
-        body_size = np.random.normal(80.3, 9.5, size = 668) # mass (kg)
+        body_size = np.random.normal(80.3, 9.5, size = 15) # mass (kg)
     else:
-        body_size = np.random.normal(67.5, 9.4, size = 668) # mass (kg)
-        
-    age = np.random.beta(2, 8) * (70 - starting_age) + starting_age
+        body_size = np.random.normal(67.5, 9.4, size = 15) # mass (kg)
+
     age_factor = 1/(1+((age) - starting_age) * 0.001)
+    water_intake = (body_size * 0.035)
 
-    total_water = (water_intake * age_factor) + water_for_activity # L/day
+    standardConsumption = (water_intake * age_factor)
 
-    return total_water
+    return standardConsumption
+
+
+peopleList = []
+for person in range(colonySize):
+    peopleList.append(createPerson())
+
+def activityCalc():
+    activity = np.random.normal(1.5, 0.25, size = 15)
+    return activity
+
+for person in peopleList:
+        peopleList[person] += activityCalc()
+
+print(peopleList)
 
 def plot(var):
     ax.clear()
@@ -63,14 +74,14 @@ def plot(var):
     colonySize = a.get()
 
     # this is a prototype and will be fixed eventually not sure what should be done to make it fixed
-    age = np.random.beta(2, 8, size = 668) * (70 - starting_age) + starting_age # skewed towards younger ages
-    activity = np.random.normal(1.5, 0.25, size = 668)
+    age = np.random.beta(2, 8, size = 15) * (70 - starting_age) + starting_age # skewed towards younger ages
+    activity = np.random.normal(1.5, 0.25, size = 15)
     is_male = np.random.choice([True, False])
 
     # if is_male:
-    #     body_size = np.random.normal(80.3, 9.5, size = 668) # mass (kg)
+    #     body_size = np.random.normal(80.3, 9.5, size = 15) # mass (kg)
     # else:
-    #     body_size = np.random.normal(67.5, 9.4, size = 668) # mass (kg)
+    #     body_size = np.random.normal(67.5, 9.4, size = 15) # mass (kg)
 
     # water_intake = (body_size * 0.035)
 
@@ -80,18 +91,22 @@ def plot(var):
     is_male = np.random.choice([True, False])
 
     if is_male:
-        body_size = np.random.normal(80.3, 9.5, size = 668) # mass (kg)
+        body_size = np.random.normal(80.3, 9.5, size = 15) # mass (kg)
     else:
-        body_size = np.random.normal(67.5, 9.4, size = 668) # mass (kg)
+        body_size = np.random.normal(67.5, 9.4, size = 15) # mass (kg)
         
-    age = np.random.beta(2, 8, size = 668) * (70 - starting_age) + starting_age
+    age = np.random.beta(2, 8, size = 15) * (70 - starting_age) + starting_age
     age_factor = 1/(1+((age) - starting_age) * 0.001)
     # np.random.normal(loc: center, stdev, s   
     
-    x = np.arange(1, 669)  # 668 sols (1 to 668)
-    y = colonySize * ((body_size * 0.035) * ((1/(1+((age) - starting_age) * 0.001))) + activity)
+    x = np.arange(1, 16)  # 15 sols (1 to 15)
+    ###### y = colonySize * ((body_size * 0.035) * ((1/(1+((age) - starting_age) * 0.001))) + activity)
+
+    y = sum(peopleList)
+
+    # print(((body_size * 0.035) * ((1/(1+((age) - starting_age) * 0.001))) + activity))
     
-    # x = np.arrange(1, 669) #668 sols (1 to 668)
+    # x = np.arrange(1, 669) #15 sols (1 to 15)
 
     # total_water = (water_intake * age_factor) + water_for_activity
     # for person in range(colonySize):
@@ -108,9 +123,9 @@ def plot(var):
     '''
     ax.clear()
     ax.scatter(x, y, s=20, color="blue", alpha=0.6, label=f'Energy (KJ) : 1300 * {colonySize}')# figure out wtf this does #this changes the size of the data points 
-    ax.set_title("Mars Energy Plot")
+    ax.set_title("Mars Water Consumption Plot")
     ax.set_xlabel("Sols (Mars Days)")
-    ax.set_ylabel("Energy Output (KJ)")
+    ax.set_ylabel("Total Water Consumption")
     ax.legend()
     ax.grid(True, alpha=0.3)
     canvas.draw()
@@ -130,11 +145,6 @@ window = Tk()
 window.geometry("1000x1400")
 window.title("Mars Solar Energy Plotter")
 
-# a = Scale(window, from_=0, to=100, length=400, orient=HORIZONTAL, command = plot)
-# b = Label(a, text="Surface in m^2",)
-# b.pack()
-# colonySize = a.get()
-# a.pack(ipady=500)
 
 # Create matplotlib figure
 fig, ax = plt.subplots(figsize=(10, 6))
@@ -168,7 +178,8 @@ interactive = NavigationToolbar2Tk(canvas, frame, pack_toolbar=False)
 interactive.update()
 interactive.pack()
 
-a = Scale(input_frame, from_=0, to=100, length=400, orient=HORIZONTAL, command = plot)
+a = Scale(input_frame, from_=0, to=50, length=400, orient=HORIZONTAL, command = plot)
+a.set(50)
 b = Label(label_frame, text="Colony Size ", font=("Arial", 20))
 a.pack(side = "bottom")
 b.pack()
@@ -189,7 +200,7 @@ status_label = Label(frame, text="Enter a value and click 'Change Limit (People)
 status_label.pack(pady=5)
 
 # Info label
-info_label = Label(frame, text="This plots energy output over 668 Mars sols (days)", 
+info_label = Label(frame, text="This plots energy output over 15 Mars sols (days)", 
                     font=("Arial", 9), fg="gray")
 info_label.pack()
 
