@@ -62,6 +62,7 @@ def plot(var):
     # daily_consumption = []
     colonySize = a.get()
 
+    # this is a prototype and will be fixed eventually not sure what should be done to make it fixed
     age = np.random.beta(2, 8, size = 668) * (70 - starting_age) + starting_age # skewed towards younger ages
     activity = np.random.normal(1.5, 0.25, size = 668)
     is_male = np.random.choice([True, False])
@@ -83,22 +84,24 @@ def plot(var):
     else:
         body_size = np.random.normal(67.5, 9.4, size = 668) # mass (kg)
         
-    age = np.random.beta(2, 8) * (70 - starting_age) + starting_age
+    age = np.random.beta(2, 8, size = 668) * (70 - starting_age) + starting_age
     age_factor = 1/(1+((age) - starting_age) * 0.001)
     # np.random.normal(loc: center, stdev, s   
     
     x = np.arange(1, 669)  # 668 sols (1 to 668)
+    y = colonySize * ((body_size * 0.035) * ((1/(1+((age) - starting_age) * 0.001))) + activity)
+    
+    # x = np.arrange(1, 669) #668 sols (1 to 668)
 
     # total_water = (water_intake * age_factor) + water_for_activity
     # for person in range(colonySize):
     #     daily_consumption += water_consumption()
+
     # for sol in x:
     #     daily_consumption.append(sum([water_consumption() for _ in range(colonySize)]))
 
     # y =  np.array(water_consumption()) 
-    # total_water = (water_intake * age_factor) + water_for_activity
-
-    y = colonySize *((body_size * 0.035) * ((1/(1+((age) - starting_age) * 0.001))) + activity)
+    
     '''
     # MAX: 586 * 1 * 0.27 * 0.9 * 88775 * 0.5 * 0.001 = 6320.691225
     # MIN: 586 * 1 * 0.20 * 0.* 88775 * 0.5 * 0.001 = 2601.1075
