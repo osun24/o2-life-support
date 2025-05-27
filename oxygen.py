@@ -2,7 +2,7 @@ import numpy as np
 
 # Constants
 colony = 50
-starting_age = 22
+starting_age = 25
 start_size = 59  # in kg
 avg_activity = 1.5  # in hours
 avg_oxygen = np.random.normal(0.84, 0.02)  # kg per day
