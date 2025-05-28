@@ -365,20 +365,41 @@ class DrawingApp(ttk.Frame):
         self._show_element_params_frame(); self._update_room_type_areas_display()
     def get_room_by_id(self,rid): return next((r for r in self.rooms_list if r.id == rid), None)
     def _setup_ui(self):
-        main_f = ttk.Frame(self,padding="10"); main_f.pack(side=tk.TOP,fill=tk.BOTH,expand=True)
-        top_ctrl_f = ttk.Frame(main_f); top_ctrl_f.pack(side=tk.TOP,fill=tk.X,pady=(0,10))
-        self.drawing_controls_frame = ttk.LabelFrame(top_ctrl_f,text="Habitat Element Controls",padding="10"); self.drawing_controls_frame.pack(side=tk.LEFT,padx=5,fill=tk.Y,expand=False)
-        elem_param_f = ttk.Frame(top_ctrl_f); elem_param_f.pack(side=tk.LEFT,padx=15,fill=tk.BOTH,expand=True)
-        self.room_params_frame = ttk.LabelFrame(elem_param_f,text="Selected Room Parameters",padding="10")
-        self.sensor_params_frame = ttk.LabelFrame(elem_param_f,text="Selected Sensor Parameters",padding="10")
-        canvas_area_f = ttk.Frame(main_f); canvas_area_f.pack(side=tk.TOP,fill=tk.BOTH,expand=True,pady=(0,10))
+        # --- Main layout: controls on the left, canvas on the right ---
+        main_f = ttk.Frame(self, padding="10")
+        main_f.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        # Create a horizontal frame to hold controls and canvas area side by side
+        horz_f = ttk.Frame(main_f)
+        horz_f.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        # Controls frame (Habitat Element Controls) on the left
+        self.drawing_controls_frame = ttk.LabelFrame(horz_f, text="Habitat Element Controls", padding="10")
+        self.drawing_controls_frame.pack(side=tk.LEFT, padx=5, fill=tk.Y, expand=False)
+
+        # Element parameter frames (room/sensor params) below controls (still on the left)
+        elem_param_f = ttk.Frame(horz_f)
+        elem_param_f.pack(side=tk.LEFT, padx=15, fill=tk.Y, expand=False)
+        self.room_params_frame = ttk.LabelFrame(elem_param_f, text="Selected Room Parameters", padding="10")
+        self.sensor_params_frame = ttk.LabelFrame(elem_param_f, text="Selected Sensor Parameters", padding="10")
+
+        # Canvas area (drawing canvas and color scale) on the right
+        canvas_area_f = ttk.Frame(horz_f)
+        canvas_area_f.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, pady=(0,10))
         self.drawing_canvas = tk.Canvas(canvas_area_f, bg="white", relief=tk.SUNKEN, borderwidth=1)
         self.drawing_canvas.pack(side=tk.LEFT, padx=(0, COLOR_SCALE_PADDING), pady=0, expand=True, fill=tk.BOTH)
         self.drawing_canvas.bind("<Configure>", self._on_canvas_resize)
-        self.color_scale_canvas = tk.Canvas(canvas_area_f,width=COLOR_SCALE_WIDTH,height=CANVAS_HEIGHT,bg="whitesmoke",relief=tk.SUNKEN,borderwidth=1); self.color_scale_canvas.pack(side=tk.RIGHT,pady=0,fill=tk.Y)
-        bottom_sim_f = ttk.Frame(main_f); bottom_sim_f.pack(side=tk.BOTTOM,fill=tk.X,pady=(5,0))
-        self.gp_display_controls_frame = ttk.LabelFrame(bottom_sim_f,text="GP Inferred Field Display",padding="5"); self.gp_display_controls_frame.pack(side=tk.LEFT,padx=5,fill=tk.X,expand=True)
-        self.sim_toggle_frame = ttk.LabelFrame(bottom_sim_f,text="Simulation Control",padding="5"); self.sim_toggle_frame.pack(side=tk.LEFT,padx=5,fill=tk.X)
+        self.color_scale_canvas = tk.Canvas(canvas_area_f, width=COLOR_SCALE_WIDTH, height=CANVAS_HEIGHT, bg="whitesmoke", relief=tk.SUNKEN, borderwidth=1)
+        self.color_scale_canvas.pack(side=tk.RIGHT, pady=0, fill=tk.Y)
+
+        # Bottom simulation controls (below everything)
+        bottom_sim_f = ttk.Frame(main_f)
+        bottom_sim_f.pack(side=tk.BOTTOM, fill=tk.X, pady=(5,0))
+        self.gp_display_controls_frame = ttk.LabelFrame(bottom_sim_f, text="GP Inferred Field Display", padding="5")
+        self.gp_display_controls_frame.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        self.sim_toggle_frame = ttk.LabelFrame(bottom_sim_f, text="Simulation Control", padding="5")
+        self.sim_toggle_frame.pack(side=tk.LEFT, padx=5, fill=tk.X)
+
         ttk.Label(self.drawing_controls_frame,text="Mode:").grid(row=0,column=0,columnspan=2,padx=2,pady=2,sticky=tk.W)
         self.mode_var = tk.StringVar(value=self.current_mode)
         modes=[("Select","select"),("Draw Room (Rect)","rectangle"),("Draw Room (Circle)","circle"),("Add Sensor","add_sensor"), ("Add Leak","add_leak")]
@@ -1238,7 +1259,7 @@ class MainApplication(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Integrated Mars Life Support & Habitat Dashboard")
-        self.geometry("1200x950") 
+        self.geometry("600x475") 
 
         self.notebook_widget_ref = ttk.Notebook(self) 
         self.notebook_widget_ref.pack(expand=True, fill='both', padx=5, pady=5)
