@@ -20,7 +20,7 @@ def plot(var):
     user_input = a.get()
     # np.random.normal(loc: center, stdev, size)
     energy_per_second = 3.318*(10^-10) #J/s/kg
-    efficiency = np.random.normal(0.225, (0.25-0.225)/3, size = 668) # based on dust and atmospheric pressure
+    efficiency = np.random.normal(0.35, (0.27-0.35)/3, size = 668) # based on dust and atmospheric pressure
     
     x = np.arange(1, 669)  # 668 sols (1 to 668)
     # y = np.arange(0, 1300 * user_input, size=668)
@@ -30,10 +30,12 @@ def plot(var):
     
                         # the integer in place here should be user_input
     y = abs(user_input  * energy_per_second * efficiency) # convert to kJ 
+
     '''
     # MAX: 586 * 1 * 0.27 * 0.9 * 88775 * 0.5 * 0.001 = 6320.691225
     # MIN: 586 * 1 * 0.20 * 0.5 * 88775 * 0.5 * 0.001 = 2601.1075
     '''
+
     ax.clear()
     ax.scatter(x, y, s=20, color="blue", alpha=0.6) #label=f'Energy (KJ) : 1300 * {user_input}')# figure out wtf this does #this changes the size of the data points 
     ax.set_title("Mars Energy Plot")
@@ -124,6 +126,5 @@ info_label.pack()
 
 # Initial plot
 plot(user_input)  # Initial plot with default value)
-
 
 window.mainloop()

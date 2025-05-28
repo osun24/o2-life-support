@@ -2,193 +2,149 @@ import random
 from tkinter import *
 from tkinter import ttk # For themed widgets, optional but nice
 import matplotlib.pyplot as plt
-import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.widgets import Slider
+import numpy as np
+
+# https://agrierp.com/blog/watering-potatoes/
+# https://hermie.com/en/blog/planting-or-potting-your-own-potatoes#:~:text=Count%20on%20about%205%20tubers,(depending%20on%20the%20variety).
+# https://www.gardenary.com/blog/6-easy-steps-to-grow-organic-potatoes
 
 '''
 VALUES HERE:
 1. How much food per person
-
+    2000 Cal per day
+2. How much water for potatoes
+    (1-2 inch of water per week)/7 = (0.06926 cups)/7 = 0.0163871/7 = 0.00234101 #L/day
+    0.00234101        
+    liters per day(1in-2in) = 0.00234101 <-> 0.00468202
+    for every tuber(5pot-10pot) 0.01170505 <-> 0.0468202
+    for every meter squared(4t-5t) 0.0468202 <-> 0.234101
+    
+3. How much water for algae
+This translates to roughly 1 to 1.5 cubic meters of water per square meter of surface area. 
+1000-1500 liters per day. 
+4. Inputs
+    colony size
+    area potatoes
+    area algae
+5. How much water per person in a day for food (final)
+6. how much potatoes are in a square meter 
+   4-5 tubers per square meter
+   5-10 potatoes per tuber
 '''
 
-
+plt.style.use('seaborn-v0_8-whitegrid')
+fig, ax = plt.subplots(figsize=(12, 8.5))
+plt.subplots_adjust(left=0.1, bottom=0.42, right=0.75, top=0.82)
 
 # --- Global Simulation Parameters ---
-starting_age = 25  # Starting age for beta distribution calculation
-individuals_list = [] # Persistent list of individuals in the colony
+potato_liters_per_day = 0.234101
+algae_liters_per_day = 1500/28
 
-# --- Helper Function for Water Calculation ---
-def calculate_daily_water_for_person(age, body_size, activity_level_today, starting_age_param):
-    """
-    Calculates daily water consumption for a single person.
-    Age and body_size are fixed for the person.
-    activity_level_today is the water (L) needed due to activity on a specific day.
-    """
-    age_factor = 1 / (1 + (age - starting_age_param) * 0.001)
-    base_water_for_body = body_size * 0.035  # Liters
-    daily_consumption = (base_water_for_body * age_factor) + activity_level_today # Liters
-    return daily_consumption
+INITIAL_MAX_DAYS = 100
+INITIAL_POTATO_SPACE_M2 = 150.0
+INITIAL_CHLORELLA_SPACE_M2 = 50.0
+INITIAL_NUM_PEOPLE = 4
 
-# --- Plotting Function ---
-def plot_simulation_data(event=None):
-    """
-    Generates simulation data based on colony size and plots it.
-    - Individuals persist. New ones are added if size increases.
-    - Each person has fixed age and gender (body size).
-    - Each person has a daily varying activity level affecting water intake.
-    - Prints the full current roster to console on each update.
-    """
-    global ax, canvas, starting_age, status_label, colony_size_scale, individuals_list
+plt.style.use('seaborn-v0_8-whitegrid')
+fig, ax = plt.subplots(figsize=(12, 8.5))
+plt.subplots_adjust(left=0.1, bottom=0.42, right=0.75, top=0.82)
 
-    ax.clear()
+days_range_initial = np.array([0, INITIAL_MAX_DAYS])
 
-    try:
-        target_colony_size = int(colony_size_scale.get())
-        if target_colony_size < 0: # Should not happen with slider min 0
-            target_colony_size = 0
-            status_label.config(text="Colony size cannot be negative. Set to 0.", style="Orange.TLabel")
-        # Slider 'to' value now handles the max, but an internal cap can remain for safety if value is set programmatically.
-        # For this setup, with slider max 50, this > 10000 check is unlikely to be hit via UI.
-        elif target_colony_size > 50: # Adjusted to reflect new slider max
-             target_colony_size = 50
-             status_label.config(text="Colony size capped at 50.", style="Orange.TLabel")
-             colony_size_scale.set(target_colony_size) # Correct scale if somehow set higher
-    except ValueError:
-        status_label.config(text="Invalid colony size.", style="Red.TLabel")
-        ax.set_title("Mars Colony Water Consumption")
-        ax.set_xlabel("Sols (Mars Days)")
-        ax.set_ylabel("Total Water Consumption (L/day)")
-        ax.grid(True, linestyle='--', alpha=0.7)
-        canvas.draw()
-        return
+initial_water_potato = INITIAL_POTATO_SPACE_M2 * potato_liters_per_day
+initial_water_chlorella = INITIAL_CHLORELLA_SPACE_M2 * algae_liters_per_day
+initial_water_total = initial_water_potato + initial_water_chlorella
 
-    current_actual_size = len(individuals_list)
-    action_taken = "No change in size."
+line_potato, = ax.plot(days_range_initial, [initial_water_potato, initial_water_potato], label='Daily Potato Water', color='saddlebrown', linewidth=2)
+line_chlorella, = ax.plot(days_range_initial, [initial_water_chlorella, initial_water_chlorella], label='Daily Chlorella Water', color='forestgreen', linewidth=2)
+line_total, = ax.plot(days_range_initial, [initial_water_total, initial_water_total], label='Daily Total', color='crimson', linestyle='--', linewidth=2)
 
-    if target_colony_size > current_actual_size:
-        action_taken = f"Increased size from {current_actual_size} to {target_colony_size}."
-        print(f"\n--- {action_taken} Adding New Individuals: ---")
-        for i in range(current_actual_size, target_colony_size):
-            is_male = np.random.choice([True, False])
-            sex_str = "Male" if is_male else "Female"
-            age = np.random.beta(a=2, b=5) * (70 - starting_age) + starting_age
-            
-            if is_male:
-                body_size = np.random.normal(loc=78.0, scale=10.0)
-            else:
-                body_size = np.random.normal(loc=65.0, scale=9.0)
-            body_size = max(20, body_size)
+text_box_props = dict(boxstyle='round,pad=0.3', fc='aliceblue', alpha=0.95, ec='silver')
+status_text_props_good = dict(boxstyle='round,pad=0.4', fc='honeydew', alpha=0.95, ec='darkgreen')
+status_text_props_bad = dict(boxstyle='round,pad=0.4', fc='mistyrose', alpha=0.95, ec='darkred')
 
-            new_person = {'id': len(individuals_list) + i - current_actual_size, 'age': age, 'sex': sex_str, 'body_size': body_size}
-            individuals_list.append(new_person)
-    elif target_colony_size < current_actual_size:
-        action_taken = f"Decreased size from {current_actual_size} to {target_colony_size}."
-        print(f"\n--- {action_taken} Removing Individuals: ---")
-        num_to_remove = current_actual_size - target_colony_size
-        individuals_list = individuals_list[:target_colony_size]
-        print(f"  Removed {num_to_remove} individuals from the end of the list.")
+y_text_row1 = 0.95
+y_text_row2 = 0.90
+y_text_row3 = 0.85
+
+x_text_col1 = 0.08
+x_text_col2 = 0.60
+x_text_col3 = 0.80
+
+text_potato = fig.text(x_text_col1, y_text_row1, '', fontsize=9, verticalalignment='top', bbox=text_box_props)
+text_chlorella = fig.text(x_text_col1, y_text_row2, '', fontsize=9, verticalalignment='top', bbox=text_box_props)
+text_area_info = fig.text(x_text_col1, y_text_row3, '', fontsize=9, verticalalignment='top', bbox=text_box_props)
+text_total = fig.text(x_text_col2, y_text_row1, '', fontsize=9, verticalalignment='top', bbox=text_box_props)
+text_people_count_info = fig.text(x_text_col2, y_text_row2, '', fontsize=9, verticalalignment='top', bbox=text_box_props)
+text_overall_status = fig.text(x_text_col3, y_text_row1, '', fontsize=10, fontweight='bold', verticalalignment='top')
+
+ax.set_xlabel('Time (Days)', fontsize=14)
+ax.set_ylabel('Daily Water Consumption (L/day)', fontsize=14, color='black')
+ax.tick_params(axis='y', labelcolor='black')
+ax.set_title('Daily Water Consumption', fontsize=16, y=1.03)
+ax.grid(True, which='major', linestyle='--', linewidth=0.5)
+
+slider_left = 0.15
+slider_width = 0.7
+slider_height = 0.03
+slider_y_start = 0.29
+slider_y_spacing = 0.07
+
+ax_potato_area_slider = plt.axes([slider_left, slider_y_start, slider_width, slider_height], facecolor='lightgoldenrodyellow')
+potato_area_slider = Slider(ax=ax_potato_area_slider, label='Potato Space (m²)', valmin=0, valmax=5000, valinit=INITIAL_POTATO_SPACE_M2, valstep=10, color="peru")
+ax_chlorella_area_slider = plt.axes([slider_left, slider_y_start - slider_y_spacing, slider_width, slider_height], facecolor='lightgoldenrodyellow')
+chlorella_area_slider = Slider(ax=ax_chlorella_area_slider, label='Chlorella Space (m²)', valmin=0, valmax=50, valinit=INITIAL_CHLORELLA_SPACE_M2, valstep=1, color="mediumseagreen")
+ax_people_slider = plt.axes([slider_left, slider_y_start - 2*slider_y_spacing, slider_width, slider_height], facecolor='lightgoldenrodyellow')
+people_slider = Slider(ax=ax_people_slider, label='Number of People', valmin=1, valmax=50, valinit=INITIAL_NUM_PEOPLE, valstep=1, color="skyblue")
+
+def update_daily_rate_plot(val):
+    potato_m2 = potato_area_slider.val
+    chlorella_m2 = chlorella_area_slider.val
+    num_people = people_slider.val
+    current_max_days = int(730)
+
+    ax.set_xlim([0, current_max_days])
+    days_data_for_lines = np.array([0, current_max_days])
+
+    daily_potato = potato_m2 * potato_liters_per_day * num_people
+    daily_chlorella = (chlorella_m2 * algae_liters_per_day) * num_people
+    daily_total = daily_potato + daily_chlorella 
+
+    line_potato.set_data(days_data_for_lines, [daily_potato, daily_potato])
+    line_chlorella.set_data(days_data_for_lines, [daily_chlorella, daily_chlorella])
+    line_total.set_data(days_data_for_lines, [daily_total, daily_total])
+
+    all_y_values = [daily_potato, daily_chlorella, daily_total, 0]
+    min_y = min(all_y_values) if all_y_values else 0
+    max_y = max(all_y_values) if all_y_values else 100
     
-    if target_colony_size > 0:
-        print(f"\n--- Current Colony Roster (Size: {len(individuals_list)}) ---")
-        for idx, person in enumerate(individuals_list):
-            print(f"  Person {idx + 1} (Original ID: {person['id']}): Age: {person['age']:.1f} yrs, Sex: {person['sex']}, Body Size: {person['body_size']:.1f} kg")
-        print("--- End of Roster ---")
-    elif current_actual_size > 0 and target_colony_size == 0:
-        print("\n--- Colony size set to 0. Roster cleared. ---")
+    padding_y_upper = (max_y - min_y) * 0.15 if (max_y - min_y) > 0 else max_y * 0.2 + 100
+    padding_y_lower = (max_y - min_y) * 0.15 if (max_y - min_y) > 0 else 100
+    final_min_y = min(min_y - padding_y_lower, -padding_y_lower if min_y > -padding_y_lower else min_y - padding_y_lower * 0.1)
+    final_max_y = max_y + padding_y_upper
+    if abs(final_max_y - final_min_y) < 500:
+        center = (final_max_y + final_min_y) / 2
+        span_needed = 500
+        final_min_y = center - span_needed / 2
+        final_max_y = center + span_needed / 2
+    ax.set_ylim([final_min_y, final_max_y])
 
-    if target_colony_size == 0:
-        ax.set_title("Mars Colony Water Consumption")
-        ax.set_xlabel("Sols (Mars Days)")
-        ax.set_ylabel("Total Water Consumption (L/day)")
-        ax.text(0.5, 0.5, "Colony size is 0", horizontalalignment='center', verticalalignment='center', transform=ax.transAxes, fontsize=12)
-        ax.grid(True, linestyle='--', alpha=0.7)
-        canvas.draw()
-        current_style = status_label.cget("style")
-        if current_style != "Orange.TLabel":
-             status_label.config(text="Colony size is 0. Nothing to plot.", style="Blue.TLabel")
-        return
-
-    sols = 668
-    total_colony_consumption_per_sol = np.zeros(sols)
-
-    for sol_index in range(sols):
-        daily_total_for_colony_this_sol = 0
-        for person in individuals_list: 
-            activity_water_today = np.random.normal(loc=1.5, scale=0.5)
-            activity_water_today = max(0.25, activity_water_today)
-
-            water_this_person_today = calculate_daily_water_for_person(
-                person['age'],
-                person['body_size'],
-                activity_water_today,
-                starting_age
-            )
-            daily_total_for_colony_this_sol += water_this_person_today
-        total_colony_consumption_per_sol[sol_index] = daily_total_for_colony_this_sol
-    
-    x_values = np.arange(1, sols + 1)
-    ax.plot(x_values, total_colony_consumption_per_sol, color="teal", marker='o', linestyle='None', markersize=4, label=f'Total Daily Water ({target_colony_size} people)')
-    
-    ax.set_title(f"Mars Colony Water Consumption ({target_colony_size} People)", fontsize=14)
-    ax.set_xlabel("Sols (Mars Days)", fontsize=12)
-    ax.set_ylabel("Total Water Consumption (L/day)", fontsize=12)
-    
-    ax.legend(loc='best')
-    ax.grid(True, linestyle=':', alpha=0.6)
-    
-    if target_colony_size > 0 and len(total_colony_consumption_per_sol) > 0:
-        avg_consumption = np.mean(total_colony_consumption_per_sol)
-        min_consumption = np.min(total_colony_consumption_per_sol)
-        max_consumption = np.max(total_colony_consumption_per_sol)
+    text_potato.set_text(f'Potato Water Consumption: {daily_potato:,.0f} L/day')
+    text_chlorella.set_text(f'Chlorella Water Consumption: {daily_chlorella:,.0f} L/day')
+    text_area_info.set_text(f'Potato: {potato_m2:.0f} m² | Chlorella: {chlorella_m2:.0f} m²')
+    text_total.set_text(f'Total Water Consumption: {daily_total:,.0f} L/day')
+    text_people_count_info.set_text(f'{num_people} People')
         
-        stats_text = f"Avg: {avg_consumption:.2f} L/day\nMin: {min_consumption:.2f} L/day\nMax: {max_consumption:.2f} L/day"
-        ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=9,
-                verticalalignment='top', bbox=dict(boxstyle='round,pad=0.3', fc='aliceblue', alpha=0.7))
+    fig.canvas.draw_idle()
 
-    canvas.draw()
-    status_label.config(text=f"Plot updated for {target_colony_size} individuals. Roster printed to console.", style="Green.TLabel")
+handles, labels = ax.get_legend_handles_labels()
+fig.legend(handles, labels, loc='upper left', bbox_to_anchor=(0.77, 0.80), ncol=1, fontsize=9, title="Daily Rates", title_fontsize=10)
 
-# Removed update_slider_limit function as it's no longer needed
+potato_area_slider.on_changed(update_daily_rate_plot)
+chlorella_area_slider.on_changed(update_daily_rate_plot)
+people_slider.on_changed(update_daily_rate_plot)
 
-# --- Main Application Setup ---
-if __name__ == "__main__":
-    window = Tk()
-    window.title("Mars Colony Water Consumption Simulator")
-    window.geometry("1000x750") 
-
-    style = ttk.Style()
-    try:
-        if 'clam' in style.theme_names(): style.theme_use('clam')
-        elif 'alt' in style.theme_names(): style.theme_use('alt')
-    except TclError: print("Default Tcl theme used.")
-
-    style.configure("Green.TLabel", foreground="green")
-    style.configure("Red.TLabel", foreground="red")
-    style.configure("Blue.TLabel", foreground="blue")
-    style.configure("Orange.TLabel", foreground="orange")
-    style.configure("Default.TLabel", foreground="black")
-
-    fig, ax = plt.subplots(figsize=(10, 5.5)) 
-    canvas = FigureCanvasTkAgg(fig, master=window)
-    canvas_widget = canvas.get_tk_widget()
-    canvas_widget.pack(side=TOP, fill=BOTH, expand=True, pady=(10,0), padx=10)
-
-    control_frame = ttk.Frame(window, padding="10 10 10 10")
-    control_frame.pack(side=BOTTOM, fill=X, padx=10, pady=10)
-
-    # Colony Size Slider - Max set to 50
-    slider_frame = ttk.LabelFrame(control_frame, text="Colony Size", padding="5")
-    slider_frame.pack(side=LEFT, fill=X, expand=True, padx=(0,10))
-    
-    colony_size_scale = Scale(slider_frame, from_=0, to=50, length=300, orient=HORIZONTAL, command=plot_simulation_data) # Changed 'to' value to 50
-    colony_size_scale.set(0) 
-    colony_size_scale.pack(side=TOP, fill=X, expand=True, pady=5)
-
-    # Removed the "Adjust Slider Max" limit_frame and its contents
-
-    status_label = ttk.Label(control_frame, text="Adjust colony size using the slider (Max 50).", relief=SUNKEN, anchor=W, padding="2", style="Default.TLabel")
-    status_label.pack(side=LEFT, fill=X, expand=True, ipady=2)
-    
-    window.after(100, lambda: plot_simulation_data()) 
-
-    window.mainloop()
+update_daily_rate_plot(None)
+plt.show()
