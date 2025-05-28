@@ -1,0 +1,28 @@
+import numpy as np
+'''
+https://www.space.com/16907-what-is-the-temperature-of-mars.html
+
+Q = mc(T2-T1)
+Q = massAir*specificHeatCapacity*(absTempEarth-absTempMars)
+
+W = nRTln(P2/P1)
+W = numberMoles*univGasConstant*absTemp*numpy.log(earthAtmPressure/marsAtmPressure)
+'''
+volume = 3.0 * float(input("area of space or something: ")) # m^3
+
+univGasConstant = 8.314 # J/molK
+absTempEarth = 296 # Kelvin # room temp
+absTempMars = 213 # Kelvin
+marsAtmPressure = 0.00592154 # atm
+earthAtmPressure = 0.9997533 # atm
+specificHeatCapacity = 1005 # J/kgK
+molesAir = (earthAtmPressure * 101325)/(univGasConstant*absTempEarth) # moles/m^3s
+
+numberMoles = volume * molesAir # moles
+massAir = numberMoles * 28.96 # kg
+
+Work = (numberMoles*univGasConstant*absTempEarth*np.log(earthAtmPressure/marsAtmPressure)) * 0.001 # kJ
+
+Q = (massAir*specificHeatCapacity*(absTempEarth-absTempMars)) * 0.001
+
+print("Energy For Pressurization: ", Work, " | Energy for Heating: ", Q)
