@@ -53,7 +53,7 @@ HUMAN_O2_CONSUMPTION_PER_HOUR_PERSON = 0.035
 HUMAN_CO2_PRODUCTION_PER_HOUR_PERSON = 0.042
 HUMAN_CO2_PRODUCTION_PPM_PER_HOUR_PERSON = HUMAN_CO2_PRODUCTION_PER_HOUR_PERSON * 10000
 SIM_STEP_REAL_TIME_SECONDS = 0.1
-SIM_TIME_SCALE_FACTOR = 80.0  # Increase this value for faster simulation (e.g., 1.0 for 1 hour per 0.1s step)
+SIM_TIME_SCALE_FACTOR = 300.0  # INCREASE FOR FASTER SIMULATION
 SIM_DT_HOURS = SIM_STEP_REAL_TIME_SECONDS * SIM_TIME_SCALE_FACTOR
 CELL_SIZE = 10
 AXIS_MARGIN = 30
@@ -190,7 +190,7 @@ class RoomShape:
             canvas.tag_raise(self.canvas_item_id)
     def deselect(self, canvas):
         self.selected = False
-        if self.canvas_item_id: canvas.itemconfig(self.canvas_item_id, outline=DEFAULT_OUTLINE_COLOR, width=DEFAULT_OUTLINE_WIDTH)
+        if self.canvas_item_id: canvas.itemconfig(self.canvas_item_id, outline=self.color, width=DEFAULT_OUTLINE_WIDTH)
     def move_to(self, canvas, nx, ny): raise NotImplementedError
     def resize(self, canvas, p1, p2): raise NotImplementedError
     def update_coords_from_canvas(self, canvas): pass
@@ -219,12 +219,16 @@ class RoomRectangle(RoomShape):
             canvas.delete(self.canvas_item_id)
         # Use O₂ concentration color only if simulation is running
         if self.app_ref and getattr(self.app_ref, 'sim_running', False):
+            print(f"Self o2 level: {self.o2_level}")
             fill_color = self.app_ref.get_o2_color(self.o2_level)
         else:
+            print(f"ELSE Self o2 level: {self.o2_level}")
             fill_color = self.color
+        outline_color = "" if not self.selected else SELECTED_OUTLINE_COLOR
+        outline_width = DEFAULT_OUTLINE_WIDTH if not self.selected else SELECTED_OUTLINE_WIDTH
         self.canvas_item_id = canvas.create_rectangle(
             self.x, self.y, self.x + self.width, self.y + self.height,
-            fill=fill_color, outline=DEFAULT_OUTLINE_COLOR, width=DEFAULT_OUTLINE_WIDTH, tags=("user_shape", f"room_{self.id}")
+            fill=fill_color, outline=outline_color, width=outline_width, tags=("user_shape", f"room_{self.id}")
         )
         if self.selected:
             self.select(canvas)
@@ -258,9 +262,11 @@ class RoomCircle(RoomShape):
             fill_color = self.app_ref.get_o2_color(self.o2_level)
         else:
             fill_color = self.color
+        outline_color = "" if not self.selected else SELECTED_OUTLINE_COLOR
+        outline_width = DEFAULT_OUTLINE_WIDTH if not self.selected else SELECTED_OUTLINE_WIDTH
         self.canvas_item_id = canvas.create_oval(
             self.x - self.radius, self.y - self.radius, self.x + self.radius, self.y + self.radius,
-            fill=fill_color, outline=DEFAULT_OUTLINE_COLOR, width=DEFAULT_OUTLINE_WIDTH, tags=("user_shape", f"room_{self.id}")
+            fill=fill_color, outline=outline_color, width=outline_width, tags=("user_shape", f"room_{self.id}")
         )
         if self.selected:
             self.select(canvas)
@@ -326,6 +332,8 @@ class DrawingApp(ttk.Frame):
              tl.bind("<Delete>", lambda e: self.handle_key_press_if_active(e,self.delete_selected_item), add="+")
              tl.bind("<BackSpace>", lambda e: self.handle_key_press_if_active(e,self.delete_selected_item), add="+")
              tl.bind("<Escape>", lambda e: self.handle_key_press_if_active(e,self.handle_escape_key_logic), add="+")
+             
+        self.colony_size = 50
 
     def get_potato_greenhouse_area(self): return self.current_potato_gh_area_m2
     def get_algae_greenhouse_area(self): return self.current_algae_gh_area_m2
@@ -433,6 +441,19 @@ class DrawingApp(ttk.Frame):
                                     textvariable=self.day_label_var)
         self.day_label.pack(side=tk.LEFT, padx=5)
         
+        # Add colony size slider
+        self.colony_size_var = tk.IntVar(value=50) # please don't break
+        ttk.Label(self.sim_toggle_frame, text="Colony Size:").pack(side=tk.LEFT, padx=(10,2))
+        self.colony_size_scale = ttk.Scale(
+            self.sim_toggle_frame,
+            from_=10, to=200,
+            variable=self.colony_size_var,
+            orient=tk.HORIZONTAL,
+            length=150,
+            command=self._on_colony_size_change
+        )
+        self.colony_size_scale.pack(side=tk.LEFT)
+        self.colony_size_scale.set(50)  # Set initial value
         self.draw_visual_grid_and_axes(); self.draw_color_scale(); self.drawing_canvas.bind("<Button-1>",self.handle_mouse_down); self.drawing_canvas.bind("<B1-Motion>",self.handle_mouse_drag); self.drawing_canvas.bind("<ButtonRelease-1>",self.handle_mouse_up)
         self._update_room_type_areas_display(); self._show_element_params_frame()
         
@@ -449,6 +470,18 @@ class DrawingApp(ttk.Frame):
         self.prepare_visualization_map_and_fields()
         self.draw_visual_grid_and_axes()
         self.draw_color_scale()
+        
+    # Changing colony size
+    def _on_colony_size_change(self, val):
+        size = int(float(val))
+        self.colony_size_var.set(size)
+        self.colony_size = size
+        self.sim_status_label_var.set(f"Colony size set to {size}. Re-init sim if running.")
+        # Refresh all dependent tabs
+        if self.oxygen_tab_ref and hasattr(self.oxygen_tab_ref, 'update_plot'):
+            self.oxygen_tab_ref.update_plot()
+        if self.potatoes_tab_ref and hasattr(self.potatoes_tab_ref, 'update_plot'):
+            self.potatoes_tab_ref.update_plot()
 
     def _update_room_type_areas_display(self):
         areas={
@@ -784,8 +817,8 @@ class DrawingApp(ttk.Frame):
             # Update all map cells inside the room to room's new O2
             for ri in range(self.sim_grid_rows):
                 for ci in range(self.sim_grid_cols):
-                    cx, cy = self._sim_to_canvas_coords_center(ri, ci)
-                    if room_here.contains_point(cx, cy):
+                    cx,cy=self._sim_to_canvas_coords_center(ri,ci)
+                    if room_here.contains_point(cx,cy):
                         self.o2_field_ground_truth[ri, ci] = room_here.o2_level
 
             # Spread to surrounding (outside) cells: simple 8-neighbor
@@ -864,7 +897,7 @@ class DrawingApp(ttk.Frame):
             for c in self.drawing_controls_frame.winfo_children():
                 if isinstance(c,(ttk.Radiobutton,ttk.Button,ttk.Scale,ttk.Spinbox,ttk.OptionMenu)): c.config(state=tk.NORMAL)
             for frame_to_enable in [self.room_params_frame, self.sensor_params_frame]:
-                if frame_to_enable.winfo_ismapped():
+
                     for c in frame_to_enable.winfo_children():
                         if isinstance(c,(ttk.Scale,ttk.Spinbox,ttk.OptionMenu)): c.config(state=tk.NORMAL)
             self._show_element_params_frame()
@@ -872,15 +905,17 @@ class DrawingApp(ttk.Frame):
             if not self.rooms_list: self.sim_status_label_var.set("Draw rooms first!"); return
             if not SKLEARN_AVAILABLE: self.sim_status_label_var.set("Scikit-learn missing! GP Disabled."); return
             self.sim_running=True; 
-            # pre‐compute the daily O₂ reserve profile from the OxygenVisualizerTab
-            people      = self.oxygen_tab_ref.current_colony_list
-            days        = int(self.oxygen_tab_ref.sliders['days'].val)
+            people = self.oxygen_tab_ref.generate_new_colony(self.colony_size)
+            days   = self.oxygen_tab_ref.initial_days
             algae_area  = self.get_algae_greenhouse_area()
             potato_area = self.get_potato_greenhouse_area()
             self.o2_profile, _, _, _ = self.oxygen_tab_ref.simulate_oxygen_over_time(
                 people, days, algae_area, potato_area
             )
             self.sim_time_hours = 0.0
+            
+            # Deselect any selected room or sensor
+            if self.selected_room_obj: self.selected_room_obj.deselect(self.drawing_canvas); self.selected_room_obj=None
 
             self.prepare_visualization_map_and_fields(); self.gp_update_counter=0; self.update_gp_model_and_predict(); self.draw_field_visualization(); self.draw_color_scale(); self.sim_toggle_button.config(text="Clear Sim"); self.mode_var.set("select")
             for c in self.drawing_controls_frame.winfo_children():
@@ -925,6 +960,14 @@ class DrawingApp(ttk.Frame):
                         MARS_O2_PERCENTAGE,
                         min(NORMAL_O2_PERCENTAGE, frac * 100.0)
                     )
+            
+            # Advance x-axis on all 3 graphs
+            for tab_ref in (self.oxygen_tab_ref, self.potatoes_tab_ref, self.solar_tab_ref):
+                if tab_ref:
+                    # keep lower bound at 0 (or 1 for Solar if you prefer)
+                    tab_ref.ax.set_xlim(0, day_idx)
+                    tab_ref.canvas.draw_idle()
+
 
         # 3) Rebuild the field arrays
         self.o2_field_ground_truth.fill(MARS_O2_PERCENTAGE)
@@ -962,6 +1005,8 @@ class DrawingApp(ttk.Frame):
                 text=f"CO2 Read: {co2r:.0f} ppm" if co2r is not None else "N/A")
 
         # 7) Redraw the canvas
+        for room in self.rooms_list:
+            room.draw(self.drawing_canvas)
         self.draw_field_visualization()
         self.draw_color_scale()
 
@@ -971,9 +1016,9 @@ class DrawingApp(ttk.Frame):
             self.run_simulation_step
         )
 
-    def get_o2_color(self, o2_level, min_o2=NORMAL_O2_PERCENTAGE*0.5, max_o2=NORMAL_O2_PERCENTAGE):
+    def get_o2_color(self, o2_level, min_o2=0, max_o2=NORMAL_O2_PERCENTAGE*0.75):
         # Use a blue-red colormap: high O2 = green, low O2 = red
-        norm = mcolors.Normalize(vmin=min_o2, vmax=max_o2)
+        norm = mcolors.Normalize(vmin=0, vmax=max_o2)
         cmap = cm.get_cmap('RdYlGn')  # Green = good, Red = bad
         rgba = cmap(norm(o2_level))
         return mcolors.to_hex(rgba)
@@ -990,16 +1035,13 @@ class OxygenVisualizerTab(ttk.Frame):
     def __init__(self, master, drawing_app_ref, *args, **kwargs):
         super().__init__(master, *args, **kwargs)
         self.drawing_app_ref = drawing_app_ref
-        self.initial_days = 100; self.max_days = 365; self.initial_colony_size = 20
-        self.current_colony_list = self.generate_new_colony(self.initial_colony_size)
+        self.initial_days = 100
+        self.max_days = 365
+        self.initial_colony_size = drawing_app_ref.colony_size if drawing_app_ref else 1
         self.current_colony_actual_size = self.initial_colony_size
+        self.current_colony_list = self.generate_new_colony(self.initial_colony_size)
         self.fig,self.ax = plt.subplots(figsize=(10,6)); self.canvas=FigureCanvasTkAgg(self.fig,master=self); self.canvas.get_tk_widget().pack(side=tk.TOP,fill=tk.BOTH,expand=True)
-        self.sliders={}; slider_rects={'colony':[0.15,0.15,0.65,0.03],'days':[0.15,0.10,0.65,0.03],'reset':[0.8,0.02,0.1,0.04]} 
         self.fig.subplots_adjust(left=0.1,bottom=0.25) 
-        ax_c=self.fig.add_axes(slider_rects['colony']); self.sliders['colony']=MplSlider(ax=ax_c,label='Colony Size',valmin=10,valmax=50,valinit=self.initial_colony_size,valstep=1)
-        ax_d=self.fig.add_axes(slider_rects['days']); self.sliders['days']=MplSlider(ax=ax_d,label='Sim Days',valmin=30,valmax=self.max_days,valinit=self.initial_days,valstep=1)
-        ax_r=self.fig.add_axes(slider_rects['reset']); self.sliders['reset_button']=MplButton(ax_r,'Reset')
-        self.sliders['colony'].on_changed(self.update_plot); self.sliders['days'].on_changed(self.update_plot); self.sliders['reset_button'].on_clicked(self.reset_plot)
         self.refresh_with_new_areas() 
 
     def refresh_with_new_areas(self):
@@ -1011,7 +1053,9 @@ class OxygenVisualizerTab(ttk.Frame):
 
     def generate_new_colony(self,s): return [Person() for _ in range(int(s))]
     def simulate_oxygen_over_time(self,people,days,algae_a,potato_a):
-        days=int(days); cons_o2=sum(p.oxygen_consumption() for p in people); prod_o2=oxygen_production(algae_a,potato_a)
+        days=int(days)
+        cons_o2=sum(p.oxygen_consumption() for p in people)
+        prod_o2=oxygen_production(algae_a,potato_a)
         cons_co2=prod_o2*CO2_PER_O2_MASS_RATIO; net_o2=prod_o2-cons_o2; init_res_basis=cons_o2 if cons_o2>0 else 0.8*len(people)
         init_o2_res=init_res_basis*15; o2_lvls=[init_o2_res]
         if days>0:
@@ -1037,13 +1081,25 @@ class OxygenVisualizerTab(ttk.Frame):
             self.status_text = self.ax.text(self.initial_days*0.8, y_stat_txt_init, stat_init, fontsize=12, fontweight='bold', color=col_init, bbox=dict(fc='white', alpha=0.7))
             self.ax.set_xlabel('Days'); self.ax.set_ylabel('Gas Level / Buffer (kg)')
             self.ax.legend(loc='upper left', fontsize='small'); self.ax.grid(True)
-
-        new_col_val=int(self.sliders['colony'].val); days=int(self.sliders['days'].val)
-        algae_a=(self.drawing_app_ref.get_algae_greenhouse_area() if self.drawing_app_ref else 0)
-        potato_a=(self.drawing_app_ref.get_potato_greenhouse_area() if self.drawing_app_ref else 0)
-        if new_col_val!=self.current_colony_actual_size: self.current_colony_list=self.generate_new_colony(new_col_val); self.current_colony_actual_size=new_col_val
-        tp=np.linspace(0,days,days+1 if days>0 else 1); o2_l,cons_o2,prod_o2,cons_co2=self.simulate_oxygen_over_time(self.current_colony_list,days,algae_a,potato_a)
-        safe_o2=np.nan_to_num(o2_l,nan=0.0); self.line.set_xdata(tp); self.line.set_ydata(safe_o2)
+            
+        new_col_val = self.drawing_app_ref.colony_size if self.drawing_app_ref else self.initial_colony_size
+        if self.drawing_app_ref and hasattr(self.drawing_app_ref, "sim_time_hours"):
+            current_day = int(self.drawing_app_ref.sim_time_hours // 24)
+        else:
+            current_day = 1
+        algae_a = self.drawing_app_ref.get_algae_greenhouse_area() if self.drawing_app_ref else 0
+        potato_a = self.drawing_app_ref.get_potato_greenhouse_area() if self.drawing_app_ref else 0
+        if new_col_val != self.current_colony_actual_size:
+            self.current_colony_list = self.generate_new_colony(new_col_val)
+            self.current_colony_actual_size = new_col_val
+        # Always simulate up to at least current_day
+        days = max(current_day, 1)
+        tp = np.linspace(0, days, days + 1)
+        o2_l, cons_o2, prod_o2, cons_co2 = self.simulate_oxygen_over_time(self.current_colony_list, days, algae_a, potato_a)
+        safe_o2 = np.nan_to_num(o2_l, nan=0.0)
+        self.line.set_xdata(tp)
+        self.line.set_ydata(safe_o2)
+        
         self.consumption_line.set_ydata([cons_o2*30,cons_o2*30]); self.production_line.set_ydata([prod_o2*30,prod_o2*30]); self.co2_consumption_line.set_ydata([cons_co2*30,cons_co2*30])
         net_o2=prod_o2-cons_o2; self.consumption_line.set_label(f'O₂ Cons Buf (30d): {cons_o2:.2f} kg/d'); self.production_line.set_label(f'O₂ Prod Buf (30d): {prod_o2:.2f} kg/d'); self.co2_consumption_line.set_label(f'CO₂ Cons Buf (30d): {cons_co2:.2f} kg/d')
         cymax=self.ax.get_ylim()[1]; last_o2=safe_o2[-1] if len(safe_o2)>0 else 0
@@ -1061,8 +1117,15 @@ class OxygenVisualizerTab(ttk.Frame):
         fin_min_y=min_y*1.1 if min_y<0 else (min_y*0.9 if min_y!=0 else -max_y*0.05 if max_y>0 else -5)
         fin_max_y=max_y*1.1 if max_y>0 else 100;
         if fin_min_y>=fin_max_y: fin_max_y=fin_min_y+100
-        self.ax.set_ylim([fin_min_y,fin_max_y]); self.ax.legend(loc='upper left',fontsize='small'); self.fig.canvas.draw_idle()
-    def reset_plot(self,e=None): self.current_colony_list=self.generate_new_colony(self.initial_colony_size); self.current_colony_actual_size=self.initial_colony_size; self.sliders['colony'].reset(); self.sliders['days'].reset(); self.update_plot()
+        self.ax.set_ylim([fin_min_y,fin_max_y])
+        
+        # show window
+        window_width = 30  # Show last 30 days, or set to days for full history
+        left = max(0, days - window_width)
+        right = days if days > 0 else 1
+        self.ax.set_xlim([left, right])
+        self.ax.legend(loc='upper left',fontsize='small'); self.fig.canvas.draw_idle()
+    def reset_plot(self,e=None): self.current_colony_list=self.generate_new_colony(self.initial_colony_size); self.update_plot()
 
 P_POTATO_YIELD_PER_SQ_METER_PER_CYCLE=5.0; P_CHLORELLA_YIELD_PER_SQ_METER_PER_CYCLE=0.1
 P_POTATO_HARVEST_CYCLE_DAYS=100; P_CHLORELLA_CYCLE_DAYS=7
@@ -1086,11 +1149,8 @@ class PotatoesCaloriesTab(ttk.Frame):
         y_txt,x1,x2,x3=0.97,0.15,0.70,0.86
         self.txt_pot=self.fig.text(x1,y_txt,'',fontsize=8,va='top',bbox=txt_box); self.txt_chl=self.fig.text(x1,y_txt-0.035,'',fontsize=8,va='top',bbox=txt_box); self.txt_spc=self.fig.text(x1,y_txt-0.07,'',fontsize=8,va='top',bbox=txt_box)
         self.txt_dem=self.fig.text(x2,y_txt,'',fontsize=8,va='top',bbox=txt_box); self.txt_ppl=self.fig.text(x2,y_txt-0.035,'',fontsize=8,va='top',bbox=txt_box); self.txt_net=self.fig.text(x2,y_txt-0.07,'',fontsize=8,va='top',bbox=txt_box); self.txt_stat=self.fig.text(x3,y_txt,'',fontsize=9,fontweight='bold',va='top')
-        self.ax.set_xlabel('Time (Days)',fontsize=12); self.ax.set_ylabel('Daily Calories (kcal/day)',fontsize=12); self.ax.set_title('Daily Caloric Production vs. Demand',fontsize=14,y=1.03); self.ax.grid(True,which='major',ls='--',lw=0.5); self.ax.legend(loc='lower left',bbox_to_anchor=(0,-0.02),ncol=2,fontsize='small')
-        self.sliders={}; s_r={'people':[0.15,0.15,0.7,0.03],'days':[0.15,0.10,0.7,0.03]} 
-        self.sliders['people']=MplSlider(ax=self.fig.add_axes(s_r['people']),label='Num People',valmin=1,valmax=50,valinit=P_INITIAL_NUM_PEOPLE,valstep=1,color="skyblue")
-        self.sliders['days']=MplSlider(ax=self.fig.add_axes(s_r['days']),label='Max Graph Days',valmin=30,valmax=1095,valinit=P_INITIAL_MAX_DAYS,valstep=15,color="lightcoral")
-        for s in self.sliders.values(): s.on_changed(self.update_plot)
+        self.ax.set_xlabel('Sols (Mars Days)',fontsize=12); self.ax.set_ylabel('Daily Calories (kcal/day)',fontsize=12); self.ax.set_title('Daily Caloric Production vs. Demand',fontsize=14,y=1.03); self.ax.grid(True,which='major',ls='--',lw=0.5); self.ax.legend(loc='lower left',bbox_to_anchor=(0,-0.02),ncol=2,fontsize='small')
+        self.update_plot()
         self.refresh_with_new_areas() 
 
     def refresh_with_new_areas(self):
@@ -1100,7 +1160,11 @@ class PotatoesCaloriesTab(ttk.Frame):
             self.after(100, self.refresh_with_new_areas)
 
     def update_plot(self,val=None):
-        ppl,days=self.sliders['people'].val,int(self.sliders['days'].val)
+        ppl = self.drawing_app_ref.colony_size if self.drawing_app_ref else P_INITIAL_NUM_PEOPLE
+        if self.drawing_app_ref and hasattr(self.drawing_app_ref, "sim_time_hours"):
+            days = int(self.drawing_app_ref.sim_time_hours // 24)
+        else:
+            days = 1
         pot_m2=(self.drawing_app_ref.get_potato_greenhouse_area() if self.drawing_app_ref else 0)
         chl_m2=(self.drawing_app_ref.get_algae_greenhouse_area() if self.drawing_app_ref else 0)
         self.ax.set_xlim([0,days]); d_data=np.array([0,days])
