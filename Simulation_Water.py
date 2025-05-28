@@ -1,210 +1,186 @@
 import random
 from tkinter import *
+from tkinter import ttk # For themed widgets, optional but nice
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
-colonySize = 0 # people
-starting_age = 25
-start_size = 59  # in kg
-avg_activity = 1.5  # in hours
+# --- Global Simulation Parameters ---
+starting_age = 25  # Starting age for beta distribution calculation
+individuals_list = [] # Persistent list of individuals in the colony
 
-colony_float = float(colonySize)
-total_hours = 1.02749125 * 24
-water_intake = 0
-daily_consumption = 0
+# --- Helper Function for Water Calculation ---
+def calculate_daily_water_for_person(age, body_size, activity_level_today, starting_age_param):
+    """
+    Calculates daily water consumption for a single person.
+    Age and body_size are fixed for the person.
+    activity_level_today is the water (L) needed due to activity on a specific day.
+    """
+    age_factor = 1 / (1 + (age - starting_age_param) * 0.001)
+    base_water_for_body = body_size * 0.035  # Liters
+    daily_consumption = (base_water_for_body * age_factor) + activity_level_today # Liters
+    return daily_consumption
 
-# def water_consumption():
-#     activity = np.random.normal(1.5, 0.25, size = 15)
-#     is_male = np.random.choice([True, False])
-#     water_intake = (body_size * 0.035)
-#     water_for_activity = activity # hours of overall activity per day
+# --- Plotting Function ---
+def plot_simulation_data(event=None):
+    """
+    Generates simulation data based on colony size and plots it.
+    - Individuals persist. New ones are added if size increases.
+    - Each person has fixed age and gender (body size).
+    - Each person has a daily varying activity level affecting water intake.
+    - Prints the full current roster to console on each update.
+    """
+    global ax, canvas, starting_age, status_label, colony_size_scale, individuals_list
 
-#     # print("Is male : " + str(is_male))
-#     # print("age is : " + str(age) + "/" + str(age_factor)) #years   
-#     # print("size is : " + str(body_size) + "/" + str(water_intake)) #kg
-#     # print("Activity is : "  + str(activity) + "/" + str(water_for_activity)) #kg
-
-#     if is_male:
-#         body_size = np.random.normal(80.3, 9.5, size = 15) # mass (kg)
-#     else:
-#         body_size = np.random.normal(67.5, 9.4, size = 15) # mass (kg)
-        
-#     age = np.random.beta(2, 8) * (70 - starting_age) + starting_age
-#     age_factor = 1/(1+((age) - starting_age) * 0.001)
-
-#     total_water = (water_intake * age_factor) + water_for_activity # L/day
-
-#     return total_water
-
-def createPerson():
-    age = np.random.beta(2, 8, size = 15) * (70 - starting_age) + starting_age
-    is_male = np.random.choice([True, False])
-
-    if is_male:
-        body_size = np.random.normal(80.3, 9.5, size = 15) # mass (kg)
-    else:
-        body_size = np.random.normal(67.5, 9.4, size = 15) # mass (kg)
-
-    age_factor = 1/(1+((age) - starting_age) * 0.001)
-    water_intake = (body_size * 0.035)
-
-    standardConsumption = (water_intake * age_factor)
-
-    return standardConsumption
-
-
-peopleList = []
-for person in range(colonySize):
-    peopleList.append(createPerson())
-
-def activityCalc():
-    activity = np.random.normal(1.5, 0.25, size = 15)
-    return activity
-
-for person in peopleList:
-        peopleList[person] += activityCalc()
-
-print(peopleList)
-
-def plot(var):
     ax.clear()
-    global colonySize, daily_consumption
-    # daily_consumption = []
-    colonySize = a.get()
 
-    # this is a prototype and will be fixed eventually not sure what should be done to make it fixed
-    age = np.random.beta(2, 8, size = 15) * (70 - starting_age) + starting_age # skewed towards younger ages
-    activity = np.random.normal(1.5, 0.25, size = 15)
-    is_male = np.random.choice([True, False])
-
-    # if is_male:
-    #     body_size = np.random.normal(80.3, 9.5, size = 15) # mass (kg)
-    # else:
-    #     body_size = np.random.normal(67.5, 9.4, size = 15) # mass (kg)
-
-    # water_intake = (body_size * 0.035)
-
-    age_factor = 1/(1+((age) - starting_age) * 0.001) # made to 
-    water_for_activity = activity # hours of overall activity per day
-
-    is_male = np.random.choice([True, False])
-
-    if is_male:
-        body_size = np.random.normal(80.3, 9.5, size = 15) # mass (kg)
-    else:
-        body_size = np.random.normal(67.5, 9.4, size = 15) # mass (kg)
-        
-    age = np.random.beta(2, 8, size = 15) * (70 - starting_age) + starting_age
-    age_factor = 1/(1+((age) - starting_age) * 0.001)
-    # np.random.normal(loc: center, stdev, s   
-    
-    x = np.arange(1, 16)  # 15 sols (1 to 15)
-    ###### y = colonySize * ((body_size * 0.035) * ((1/(1+((age) - starting_age) * 0.001))) + activity)
-
-    y = sum(peopleList)
-
-    # print(((body_size * 0.035) * ((1/(1+((age) - starting_age) * 0.001))) + activity))
-    
-    # x = np.arrange(1, 669) #15 sols (1 to 15)
-
-    # total_water = (water_intake * age_factor) + water_for_activity
-    # for person in range(colonySize):
-    #     daily_consumption += water_consumption()
-
-    # for sol in x:
-    #     daily_consumption.append(sum([water_consumption() for _ in range(colonySize)]))
-
-    # y =  np.array(water_consumption()) 
-    
-    '''
-    # MAX: 586 * 1 * 0.27 * 0.9 * 88775 * 0.5 * 0.001 = 6320.691225
-    # MIN: 586 * 1 * 0.20 * 0.* 88775 * 0.5 * 0.001 = 2601.1075
-    '''
-    ax.clear()
-    ax.scatter(x, y, s=20, color="blue", alpha=0.6, label=f'Energy (KJ) : 1300 * {colonySize}')# figure out wtf this does #this changes the size of the data points 
-    ax.set_title("Mars Water Consumption Plot")
-    ax.set_xlabel("Sols (Mars Days)")
-    ax.set_ylabel("Total Water Consumption")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    canvas.draw()
-    
-    # status_label.config(text=f"Plot updated with multiplier: {a.get()}", fg="green")
-
-def update_limit():
     try:
-        new_limit = float(entry.get())
-        a.config(to=new_limit)
-        plot(None)  # trigger re-plot
+        target_colony_size = int(colony_size_scale.get())
+        if target_colony_size < 0: # Should not happen with slider min 0
+            target_colony_size = 0
+            status_label.config(text="Colony size cannot be negative. Set to 0.", style="Orange.TLabel")
+        # Slider 'to' value now handles the max, but an internal cap can remain for safety if value is set programmatically.
+        # For this setup, with slider max 50, this > 10000 check is unlikely to be hit via UI.
+        elif target_colony_size > 50: # Adjusted to reflect new slider max
+             target_colony_size = 50
+             status_label.config(text="Colony size capped at 50.", style="Orange.TLabel")
+             colony_size_scale.set(target_colony_size) # Correct scale if somehow set higher
     except ValueError:
-        status_label.config(text="Please enter a valid number.", fg="red")
-# create main window
+        status_label.config(text="Invalid colony size.", style="Red.TLabel")
+        ax.set_title("Mars Colony Water Consumption")
+        ax.set_xlabel("Sols (Mars Days)")
+        ax.set_ylabel("Total Water Consumption (L/day)")
+        ax.grid(True, linestyle='--', alpha=0.7)
+        canvas.draw()
+        return
+
+    current_actual_size = len(individuals_list)
+    action_taken = "No change in size."
+
+    if target_colony_size > current_actual_size:
+        action_taken = f"Increased size from {current_actual_size} to {target_colony_size}."
+        print(f"\n--- {action_taken} Adding New Individuals: ---")
+        for i in range(current_actual_size, target_colony_size):
+            is_male = np.random.choice([True, False])
+            sex_str = "Male" if is_male else "Female"
+            age = np.random.beta(a=2, b=5) * (70 - starting_age) + starting_age
+            
+            if is_male:
+                body_size = np.random.normal(loc=78.0, scale=10.0)
+            else:
+                body_size = np.random.normal(loc=65.0, scale=9.0)
+            body_size = max(20, body_size)
+
+            new_person = {'id': len(individuals_list) + i - current_actual_size, 'age': age, 'sex': sex_str, 'body_size': body_size}
+            individuals_list.append(new_person)
+    elif target_colony_size < current_actual_size:
+        action_taken = f"Decreased size from {current_actual_size} to {target_colony_size}."
+        print(f"\n--- {action_taken} Removing Individuals: ---")
+        num_to_remove = current_actual_size - target_colony_size
+        individuals_list = individuals_list[:target_colony_size]
+        print(f"  Removed {num_to_remove} individuals from the end of the list.")
     
-window = Tk()
-window.geometry("1000x1400")
-window.title("Mars Solar Energy Plotter")
+    if target_colony_size > 0:
+        print(f"\n--- Current Colony Roster (Size: {len(individuals_list)}) ---")
+        for idx, person in enumerate(individuals_list):
+            print(f"  Person {idx + 1} (Original ID: {person['id']}): Age: {person['age']:.1f} yrs, Sex: {person['sex']}, Body Size: {person['body_size']:.1f} kg")
+        print("--- End of Roster ---")
+    elif current_actual_size > 0 and target_colony_size == 0:
+        print("\n--- Colony size set to 0. Roster cleared. ---")
 
+    if target_colony_size == 0:
+        ax.set_title("Mars Colony Water Consumption")
+        ax.set_xlabel("Sols (Mars Days)")
+        ax.set_ylabel("Total Water Consumption (L/day)")
+        ax.text(0.5, 0.5, "Colony size is 0", horizontalalignment='center', verticalalignment='center', transform=ax.transAxes, fontsize=12)
+        ax.grid(True, linestyle='--', alpha=0.7)
+        canvas.draw()
+        current_style = status_label.cget("style")
+        if current_style != "Orange.TLabel":
+             status_label.config(text="Colony size is 0. Nothing to plot.", style="Blue.TLabel")
+        return
 
-# Create matplotlib figure
-fig, ax = plt.subplots(figsize=(10, 6))
-canvas = FigureCanvasTkAgg(fig, master=window)
-canvas.get_tk_widget().pack(pady=10)
+    sols = 668
+    total_colony_consumption_per_sol = np.zeros(sols)
 
-frame = Frame(window)
-frame.pack(pady=10)#seperates the distance between the button and the graph
+    for sol_index in range(sols):
+        daily_total_for_colony_this_sol = 0
+        for person in individuals_list: 
+            activity_water_today = np.random.normal(loc=1.5, scale=0.5)
+            activity_water_today = max(0.25, activity_water_today)
 
-title_label = Label(frame, text="Mars Water Consumption Calculator")
-title_label.config(font=("Courier", 24))
-title_label.pack(pady=50)
+            water_this_person_today = calculate_daily_water_for_person(
+                person['age'],
+                person['body_size'],
+                activity_water_today,
+                starting_age
+            )
+            daily_total_for_colony_this_sol += water_this_person_today
+        total_colony_consumption_per_sol[sol_index] = daily_total_for_colony_this_sol
+    
+    x_values = np.arange(1, sols + 1)
+    ax.plot(x_values, total_colony_consumption_per_sol, color="teal", marker='o', linestyle='None', markersize=4, label=f'Total Daily Water ({target_colony_size} people)')
+    
+    ax.set_title(f"Mars Colony Water Consumption ({target_colony_size} People)", fontsize=14)
+    ax.set_xlabel("Sols (Mars Days)", fontsize=12)
+    ax.set_ylabel("Total Water Consumption (L/day)", fontsize=12)
+    
+    ax.legend(loc='best')
+    ax.grid(True, linestyle=':', alpha=0.6)
+    
+    if target_colony_size > 0 and len(total_colony_consumption_per_sol) > 0:
+        avg_consumption = np.mean(total_colony_consumption_per_sol)
+        min_consumption = np.min(total_colony_consumption_per_sol)
+        max_consumption = np.max(total_colony_consumption_per_sol)
+        
+        stats_text = f"Avg: {avg_consumption:.2f} L/day\nMin: {min_consumption:.2f} L/day\nMax: {max_consumption:.2f} L/day"
+        ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=9,
+                verticalalignment='top', bbox=dict(boxstyle='round,pad=0.3', fc='aliceblue', alpha=0.7))
 
-# # Input section
+    canvas.draw()
+    status_label.config(text=f"Plot updated for {target_colony_size} individuals. Roster printed to console.", style="Green.TLabel")
 
-label_frame = Frame(frame, border=False)
-label_frame.pack()
+# Removed update_slider_limit function as it's no longer needed
 
-input_frame = Frame(frame, border=False)
-input_frame.pack()
+# --- Main Application Setup ---
+if __name__ == "__main__":
+    window = Tk()
+    window.title("Mars Colony Water Consumption Simulator")
+    window.geometry("1000x750") 
 
-# random_frame = Frame(frame, border=False)
-# random_frame.pack()
+    style = ttk.Style()
+    try:
+        if 'clam' in style.theme_names(): style.theme_use('clam')
+        elif 'alt' in style.theme_names(): style.theme_use('alt')
+    except TclError: print("Default Tcl theme used.")
 
-plot_button_frame = Frame(frame, border=False)
-plot_button_frame.pack()
+    style.configure("Green.TLabel", foreground="green")
+    style.configure("Red.TLabel", foreground="red")
+    style.configure("Blue.TLabel", foreground="blue")
+    style.configure("Orange.TLabel", foreground="orange")
+    style.configure("Default.TLabel", foreground="black")
 
-# Plot button
+    fig, ax = plt.subplots(figsize=(10, 5.5)) 
+    canvas = FigureCanvasTkAgg(fig, master=window)
+    canvas_widget = canvas.get_tk_widget()
+    canvas_widget.pack(side=TOP, fill=BOTH, expand=True, pady=(10,0), padx=10)
 
-interactive = NavigationToolbar2Tk(canvas, frame, pack_toolbar=False)
-interactive.update()
-interactive.pack()
+    control_frame = ttk.Frame(window, padding="10 10 10 10")
+    control_frame.pack(side=BOTTOM, fill=X, padx=10, pady=10)
 
-a = Scale(input_frame, from_=0, to=50, length=400, orient=HORIZONTAL, command = plot)
-a.set(50)
-b = Label(label_frame, text="Colony Size ", font=("Arial", 20))
-a.pack(side = "bottom")
-b.pack()
-colonySize = a.get()
+    # Colony Size Slider - Max set to 50
+    slider_frame = ttk.LabelFrame(control_frame, text="Colony Size", padding="5")
+    slider_frame.pack(side=LEFT, fill=X, expand=True, padx=(0,10))
+    
+    colony_size_scale = Scale(slider_frame, from_=0, to=50, length=300, orient=HORIZONTAL, command=plot_simulation_data) # Changed 'to' value to 50
+    colony_size_scale.set(0) 
+    colony_size_scale.pack(side=TOP, fill=X, expand=True, pady=5)
 
-plot_button = Button(plot_button_frame, text="Change Limit of Slider (people)", command=update_limit, 
-                    font=("Arial", 12), bg="lightblue")
-plot_button.pack(side=RIGHT, padx=10)
+    # Removed the "Adjust Slider Max" limit_frame and its contents
 
-Label(plot_button_frame, text="Colony Size:", font=("Arial", 12)).pack(side=LEFT, padx=5)
-entry = Entry(plot_button_frame, font=("Arial", 12), width=10)
-entry.pack(side=TOP, padx=5)
-entry.insert(0, "100")  # Default value        
+    status_label = ttk.Label(control_frame, text="Adjust colony size using the slider (Max 50).", relief=SUNKEN, anchor=W, padding="2", style="Default.TLabel")
+    status_label.pack(side=LEFT, fill=X, expand=True, ipady=2)
+    
+    window.after(100, lambda: plot_simulation_data()) 
 
-# Status label
-status_label = Label(frame, text="Enter a value and click 'Change Limit (People))' to update the plot.", 
-                    font=("Arial", 10), fg="blue")
-status_label.pack(pady=5)
-
-# Info label
-info_label = Label(frame, text="This plots energy output over 15 Mars sols (days)", 
-                    font=("Arial", 9), fg="gray")
-info_label.pack()
-
-# Initial plot
-plot(colonySize)  # Initial plot with default value
-
-window.mainloop()
+    window.mainloop()
