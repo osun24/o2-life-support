@@ -5,6 +5,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
+'''
+VALUES HERE:
+1. How much food per person
+
+'''
+
+
+
 # --- Global Simulation Parameters ---
 starting_age = 25  # Starting age for beta distribution calculation
 individuals_list = [] # Persistent list of individuals in the colony

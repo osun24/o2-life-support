@@ -143,9 +143,7 @@ chlorella_space_slider.on_changed(update_daily_rate_plot)
 people_slider.on_changed(update_daily_rate_plot)
 
 update_daily_rate_plot(None)
-plt.show()import matplotlib.pyplot as plt
-import numpy as np
-from matplotlib.widgets import Slider
+plt.show()
 
 # --- Simulation Parameters ---
 POTATO_YIELD_PER_SQ_METER_PER_CYCLE = 5.0
