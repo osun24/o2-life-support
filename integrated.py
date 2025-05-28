@@ -80,6 +80,10 @@ GP_UPDATE_EVERY_N_FRAMES = 3
 SENSOR_READING_NOISE_STD_O2 = math.sqrt(SENSOR_DEFAULT_O2_VARIANCE) if SKLEARN_AVAILABLE else 0
 SENSOR_READING_NOISE_STD_CO2 = math.sqrt(SENSOR_DEFAULT_CO2_VARIANCE) if SKLEARN_AVAILABLE else 0
 
+# LEAKKKK
+LEAK_DIFFUSION_COEFF = 0.35     # kg O₂ · m⁻² · h⁻¹  (tune as desired)
+LEAK_MAX_RADIUS_PX   = CELL_SIZE * 4
+
 class RoomType(Enum):
     LIVING_QUARTERS = auto()
     GREENHOUSE_POTATOES = auto()
@@ -144,6 +148,29 @@ class Sensor:
             if coords:
                 self.x = (coords[0] + coords[2]) / 2
                 self.y = (coords[1] + coords[3]) / 2
+
+class Leak:
+    _id_counter = 0
+    def __init__(self, x, y, radius=CELL_SIZE, app_ref=None):
+        self.id       = Leak._id_counter; Leak._id_counter += 1
+        self.x, self.y = x, y
+        self.radius   = radius
+        self.canvas_item_id = None
+        self.app_ref  = app_ref
+
+    def draw(self, canvas):
+        if self.canvas_item_id:
+            canvas.delete(self.canvas_item_id)
+        self.canvas_item_id = canvas.create_oval(
+            self.x - self.radius, self.y - self.radius,
+            self.x + self.radius, self.y + self.radius,
+            outline="red", width=2, dash=(3,2),
+            tags=("leak", f"leak_{self.id}")
+        )
+        canvas.tag_raise(self.canvas_item_id)
+
+    def contains_point(self, px, py):
+        return (px - self.x)**2 + (py - self.y)**2 <= self.radius**2
 
 class RoomShape:
     _id_counter = 0
@@ -260,6 +287,9 @@ class DrawingApp(ttk.Frame):
         self.oxygen_tab_ref = oxygen_tab_ref
         self.potatoes_tab_ref = potatoes_tab_ref
         self.solar_tab_ref = solar_tab_ref # Store solar tab reference
+        
+        # LEAK
+        self.leaks_list = []
 
         self.current_living_quarters_area_m2 = 0.0
         self.current_potato_gh_area_m2 = 0.0
@@ -348,7 +378,7 @@ class DrawingApp(ttk.Frame):
         self.sim_toggle_frame = ttk.LabelFrame(bottom_sim_f,text="Simulation Control",padding="5"); self.sim_toggle_frame.pack(side=tk.LEFT,padx=5,fill=tk.X)
         ttk.Label(self.drawing_controls_frame,text="Mode:").grid(row=0,column=0,columnspan=2,padx=2,pady=2,sticky=tk.W)
         self.mode_var = tk.StringVar(value=self.current_mode)
-        modes=[("Select","select"),("Draw Room (Rect)","rectangle"),("Draw Room (Circle)","circle"),("Add Sensor","add_sensor")]
+        modes=[("Select","select"),("Draw Room (Rect)","rectangle"),("Draw Room (Circle)","circle"),("Add Sensor","add_sensor"), ("Add Leak","add_leak")]
         cr=0
         for i,(t,mv) in enumerate(modes): ttk.Radiobutton(self.drawing_controls_frame,text=t,variable=self.mode_var,value=mv,command=self.set_current_mode).grid(row=i+1,column=0,columnspan=2,padx=2,pady=2,sticky=tk.W); cr=i+1
         cr+=1; self.delete_button=ttk.Button(self.drawing_controls_frame,text="Delete Selected",command=self.delete_selected_item); self.delete_button.grid(row=cr,column=0,padx=5,pady=5,sticky=tk.W)
@@ -486,6 +516,16 @@ class DrawingApp(ttk.Frame):
     def handle_mouse_down(self,e):
         eff_x,eff_y=self.drawing_canvas.canvasx(e.x),self.drawing_canvas.canvasy(e.y)
         if self.sim_running: self.sim_status_label_var.set("Sim Running. Editing locked."); return 
+        
+        # Handle modes
+        if self.current_mode == "add_leak":
+            # radius = first click default; Shift-drag resizes (optional)
+            new_leak = Leak(eff_x, eff_y, CELL_SIZE*1.5, app_ref=self)
+            self.leaks_list.append(new_leak)
+            new_leak.draw(self.drawing_canvas)
+            self.mode_var.set("select"); self.set_current_mode()
+            self.sim_status_label_var.set(f"Leak L{new_leak.id} added.")
+            return
         if self.current_mode=="add_sensor": self.handle_add_sensor_click(eff_x,eff_y); return
         self.is_dragging=True; self.was_resizing_session=False; self.drag_action_occurred=False
         if self.current_mode=="select":
@@ -687,6 +727,38 @@ class DrawingApp(ttk.Frame):
         self.drawing_canvas.tag_lower("gp_field_cell"); self.draw_visual_grid_and_axes()
         for r_obj in self.rooms_list: r_obj.draw(self.drawing_canvas) 
         for s_obj in self.sensors_list: s_obj.draw(self.drawing_canvas)
+        for leak in self.leaks_list: leak.draw(self.drawing_canvas)
+    
+    # LEAKS
+    def _apply_leaks(self):
+    # For each leak, move O₂ from room cell → outside cell each step
+        for leak in self.leaks_list:
+            sr, sc = self._canvas_to_sim_coords(leak.x, leak.y)
+            if sr is None or sc is None: continue
+
+            # Identify the room that owns the leak (if any)
+            room_here = next((r for r in self.rooms_list if r.contains_point(leak.x, leak.y)), None)
+            if not room_here: continue   # hole in the wall? ignore for now
+
+            # Flux (kg) for one time-step = k·A·ΔC·Δt
+            # convert %vol → kg O₂ per m³ scaling factor ≈ 0.0013 at STP
+            A_m2 = math.pi * (leak.radius / CELL_SIZE)**2        # m² at floor-plan scale
+            delta_C = (room_here.o2_level - MARS_O2_PERCENTAGE)  # % difference
+            mass_flux = LEAK_DIFFUSION_COEFF * A_m2 * delta_C * SIM_DT_HOURS  # kg
+
+            # Convert mass to % drop in that room’s volume
+            vol_L = room_here.get_volume_liters()
+            if vol_L <= 0: continue
+            perc_drop = (mass_flux / 1.429) / (vol_L/1000) * 100   # 1.429 kg m⁻³ O₂ density
+
+            room_here.o2_level = max(MARS_O2_PERCENTAGE,
+                                    room_here.o2_level - perc_drop)
+
+            # Surrounding cell gets enriched (crude)
+            self.o2_field_ground_truth[sr, sc] = min(
+                NORMAL_O2_PERCENTAGE, self.o2_field_ground_truth[sr, sc] + perc_drop
+            )
+        
     def _on_gas_view_change(self): self.update_gp_model_and_predict(); self.draw_field_visualization(); self.draw_color_scale()
     def collect_sensor_data_for_gp(self):
         sX,sy=[],[]; gas_f=self.o2_field_ground_truth if self.current_gas_view.get()=="O2" else self.co2_field_ground_truth
@@ -789,6 +861,7 @@ class DrawingApp(ttk.Frame):
                     cx,cy=self._sim_to_canvas_coords_center(ri,ci)
                     for r in self.rooms_list:
                         if r.contains_point(cx,cy): self.o2_field_ground_truth[ri,ci],self.co2_field_ground_truth[ri,ci]=r.o2_level,r.co2_level; break
+        self._apply_leaks()
         self.gp_update_counter+=1
         if self.gp_update_counter>=GP_UPDATE_EVERY_N_FRAMES: self.update_gp_model_and_predict(); self.gp_update_counter=0
         elif not SKLEARN_AVAILABLE or not self.sensors_list: self.update_gp_model_and_predict()
