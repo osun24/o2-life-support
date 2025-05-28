@@ -50,7 +50,7 @@ HUMAN_O2_CONSUMPTION_KG_DAY_PERSON = 0.83 # kg O2 / day / person (used in Oxygen
 HUMAN_CO2_PRODUCTION_KG_DAY_PERSON = 1.0 # kg CO2 / day / person (approx, can be refined)
 
 SIM_STEP_REAL_TIME_SECONDS = 0.1
-SIM_TIME_SCALE_FACTOR = 1.0 / 36.0
+SIM_TIME_SCALE_FACTOR = 80.0  # Increase this value for faster simulation (e.g., 1.0 for 1 hour per 0.1s step)
 SIM_DT_HOURS = SIM_STEP_REAL_TIME_SECONDS * SIM_TIME_SCALE_FACTOR
 CELL_SIZE = 10
 AXIS_MARGIN = 30
@@ -78,8 +78,14 @@ LEAK_DIFFUSION_COEF = 0.35 # KG O2
 SENSOR_READING_NOISE_STD_O2 = math.sqrt(SENSOR_DEFAULT_O2_VARIANCE) if SKLEARN_AVAILABLE else 0
 SENSOR_READING_NOISE_STD_CO2 = math.sqrt(SENSOR_DEFAULT_CO2_VARIANCE) if SKLEARN_AVAILABLE else 0
 
+<<<<<<< HEAD
 # Universal Simulation Parameters
 INITIAL_UNIVERSAL_POPULATION = 4 # New universal population default
+=======
+# LEAKKKK
+LEAK_DIFFUSION_COEFF = 10     # kg O₂ · m⁻² · h⁻¹  (tune as desired)
+LEAK_MAX_RADIUS_PX   = CELL_SIZE * 4
+>>>>>>> 886167d59b03cd33abeb0c7616f31cc096b1125a
 
 class RoomType(Enum):
     LIVING_QUARTERS = auto()
@@ -246,6 +252,7 @@ class DrawingApp(ttk.Frame):
         print(f"DrawingApp __init__ starting. SKLEARN_AVAILABLE: {SKLEARN_AVAILABLE}") # Diagnostic print
         self.oxygen_tab_ref = oxygen_tab_ref
         self.potatoes_tab_ref = potatoes_tab_ref
+<<<<<<< HEAD
         self.solar_tab_ref = solar_tab_ref
         self.water_consumption_tab_ref = water_consumption_tab_ref
 
@@ -253,6 +260,15 @@ class DrawingApp(ttk.Frame):
         self.population_count = self.population_count_var.get()
         self.population_count_var.trace_add("write", self._on_population_changed_callback)
 
+=======
+        self.solar_tab_ref = solar_tab_ref # Store solar tab reference
+        
+        self.sim_time_hours = 0.0
+        self.o2_profile = None
+                
+        # LEAK
+        self.leaks_list = []
+>>>>>>> 886167d59b03cd33abeb0c7616f31cc096b1125a
 
         self.current_living_quarters_area_m2 = 0.0
         self.current_potato_gh_area_m2 = 0.0
@@ -463,8 +479,32 @@ class DrawingApp(ttk.Frame):
         ttk.Label(self.gp_display_controls_frame,text="View Gas:").pack(side=tk.LEFT,padx=(5,0)); ttk.Radiobutton(self.gp_display_controls_frame,text="O2",variable=self.current_gas_view,value="O2",command=self._on_gas_view_change).pack(side=tk.LEFT); ttk.Radiobutton(self.gp_display_controls_frame,text="CO2",variable=self.current_gas_view,value="CO2",command=self._on_gas_view_change).pack(side=tk.LEFT,padx=(0,10))
         self.field_scale_label_var=tk.StringVar(value=f"GP Scale: {self.current_gp_display_min:.1f}-{self.current_gp_display_max:.1f}"); ttk.Label(self.gp_display_controls_frame,textvariable=self.field_scale_label_var).pack(side=tk.LEFT,padx=5)
         self.sim_status_label_var=tk.StringVar(value="Sim Stopped. Editing enabled."); ttk.Label(self.sim_toggle_frame,textvariable=self.sim_status_label_var).pack(side=tk.LEFT,padx=5); self.sim_toggle_button=ttk.Button(self.sim_toggle_frame,text="Initialize & Run Sim",command=self.toggle_simulation); self.sim_toggle_button.pack(side=tk.LEFT,padx=5)
+<<<<<<< HEAD
 
 
+=======
+        
+        # add days label
+        self.day_label_var = tk.StringVar(value="Day: 0")
+        self.day_label     = ttk.Label(self.sim_toggle_frame,
+                                    textvariable=self.day_label_var)
+        self.day_label.pack(side=tk.LEFT, padx=5)
+        
+        self.draw_visual_grid_and_axes(); self.draw_color_scale(); self.drawing_canvas.bind("<Button-1>",self.handle_mouse_down); self.drawing_canvas.bind("<B1-Motion>",self.handle_mouse_drag); self.drawing_canvas.bind("<ButtonRelease-1>",self.handle_mouse_up)
+        self._update_room_type_areas_display(); self._show_element_params_frame()
+        
+    # Resize canvas
+    def _on_canvas_resize(self, event):
+        global CANVAS_WIDTH, CANVAS_HEIGHT
+        CANVAS_WIDTH, CANVAS_HEIGHT = event.width, event.height
+        self.sim_grid_rows = (CANVAS_HEIGHT - AXIS_MARGIN) // CELL_SIZE
+        self.sim_grid_cols = (CANVAS_WIDTH - AXIS_MARGIN) // CELL_SIZE
+        self.o2_field_ground_truth = np.full((self.sim_grid_rows, self.sim_grid_cols), MARS_O2_PERCENTAGE, dtype=float)
+        self.co2_field_ground_truth = np.full((self.sim_grid_rows, self.sim_grid_cols), MARS_CO2_PPM, dtype=float)
+        self.map_mask = np.zeros((self.sim_grid_rows, self.sim_grid_cols), dtype=int)
+        self.XY_gp_prediction_grid = self._create_gp_prediction_grid()
+        self.prepare_visualization_map_and_fields()
+>>>>>>> 886167d59b03cd33abeb0c7616f31cc096b1125a
         self.draw_visual_grid_and_axes()
         self.draw_color_scale()
         self.drawing_canvas.bind("<Button-1>",self.handle_mouse_down)
@@ -800,10 +840,47 @@ class DrawingApp(ttk.Frame):
         self.draw_field_visualization() 
         self.draw_color_scale()
 
+<<<<<<< HEAD
     def _on_gas_view_change(self):
         # ... (no changes) ...
         self.update_gp_model_and_predict(); self.draw_field_visualization(); self.draw_color_scale()
 
+=======
+            room_here = next((r for r in self.rooms_list if r.contains_point(leak.x, leak.y)), None)
+            if not room_here: continue
+
+            A_m2 = math.pi * (leak.radius / CELL_SIZE)**2
+            delta_C = (room_here.o2_level - MARS_O2_PERCENTAGE)
+            mass_flux = LEAK_DIFFUSION_COEFF * A_m2 * delta_C * SIM_DT_HOURS
+
+            vol_L = room_here.get_volume_liters()
+            if vol_L <= 0: continue
+            perc_drop = (mass_flux / 1.429) / (vol_L/1000) * 100
+
+            # Apply the O2 drop to both the room and all field cells in the room
+            room_here.o2_level = max(MARS_O2_PERCENTAGE, room_here.o2_level - perc_drop)
+
+            # Update all map cells inside the room to room's new O2
+            for ri in range(self.sim_grid_rows):
+                for ci in range(self.sim_grid_cols):
+                    cx, cy = self._sim_to_canvas_coords_center(ri, ci)
+                    if room_here.contains_point(cx, cy):
+                        self.o2_field_ground_truth[ri, ci] = room_here.o2_level
+
+            # Spread to surrounding (outside) cells: simple 8-neighbor
+            for dri in [-1,0,1]:
+                for dci in [-1,0,1]:
+                    nr, nc = sr+dri, sc+dci
+                    if (dri==0 and dci==0) or not (0<=nr<self.sim_grid_rows and 0<=nc<self.sim_grid_cols):
+                        continue
+                    if self.map_mask[nr, nc] == 0:
+                        self.o2_field_ground_truth[nr, nc] = min(
+                            NORMAL_O2_PERCENTAGE,
+                            self.o2_field_ground_truth[nr, nc] + perc_drop/8
+                        )
+        
+    def _on_gas_view_change(self): self.update_gp_model_and_predict(); self.draw_field_visualization(); self.draw_color_scale()
+>>>>>>> 886167d59b03cd33abeb0c7616f31cc096b1125a
     def collect_sensor_data_for_gp(self):
         # ... (no changes) ...
         sX,sy=[],[]; gas_f=self.o2_field_ground_truth if self.current_gas_view.get()=="O2" else self.co2_field_ground_truth
@@ -916,6 +993,7 @@ class DrawingApp(ttk.Frame):
         else:
             print("toggle_simulation: Entering block to START simulation.") # Diagnostic
             if not self.rooms_list: self.sim_status_label_var.set("Draw rooms first!"); return
+<<<<<<< HEAD
             if not SKLEARN_AVAILABLE: self.sim_status_label_var.set("Scikit-learn missing! Cannot run simulation."); return
             if self.sim_grid_rows <= 0 or self.sim_grid_cols <= 0 : self.sim_status_label_var.set("Grid not ready!"); return
             
@@ -926,6 +1004,21 @@ class DrawingApp(ttk.Frame):
             self.draw_field_visualization(); self.draw_color_scale();
             self.sim_toggle_button.config(text="Stop Sim"); self.mode_var.set("select")
             
+=======
+            if not SKLEARN_AVAILABLE: self.sim_status_label_var.set("Scikit-learn missing! GP Disabled."); return
+            self.sim_running=True; 
+            # pre‐compute the daily O₂ reserve profile from the OxygenVisualizerTab
+            people      = self.oxygen_tab_ref.current_colony_list
+            days        = int(self.oxygen_tab_ref.sliders['days'].val)
+            algae_area  = self.get_algae_greenhouse_area()
+            potato_area = self.get_potato_greenhouse_area()
+            self.o2_profile, _, _, _ = self.oxygen_tab_ref.simulate_oxygen_over_time(
+                people, days, algae_area, potato_area
+            )
+            self.sim_time_hours = 0.0
+
+            self.prepare_visualization_map_and_fields(); self.gp_update_counter=0; self.update_gp_model_and_predict(); self.draw_field_visualization(); self.draw_color_scale(); self.sim_toggle_button.config(text="Clear Sim"); self.mode_var.set("select")
+>>>>>>> 886167d59b03cd33abeb0c7616f31cc096b1125a
             for c in self.drawing_controls_frame.winfo_children():
                 if isinstance(c,ttk.Radiobutton) and c.cget("value")!="select": c.config(state=tk.DISABLED)
                 elif isinstance(c, (ttk.Button, ttk.Spinbox)) and c != self.sim_toggle_button : c.config(state=tk.DISABLED) # Disable population spinbox too
@@ -958,6 +1051,7 @@ class DrawingApp(ttk.Frame):
 
 
     def run_simulation_step(self):
+<<<<<<< HEAD
         print(f"run_simulation_step called. self.sim_running: {self.sim_running}") # Diagnostic
         if not self.sim_running: 
             print("run_simulation_step: Exiting because sim_running is False.") # Diagnostic
@@ -1003,6 +1097,77 @@ class DrawingApp(ttk.Frame):
         self.draw_field_visualization()
         self.draw_color_scale() 
         self.sim_job_id=self.after(int(SIM_STEP_REAL_TIME_SECONDS*1000),self.run_simulation_step)
+=======
+        # 1) Bail out immediately if the sim was stopped
+        if not self.sim_running:
+            if self.sim_job_id:
+                self.after_cancel(self.sim_job_id)
+                self.sim_job_id = None
+            return
+
+        # 2) Advance simulated time & update room O₂ from the profile
+        if self.o2_profile is not None:
+            self.sim_time_hours += SIM_DT_HOURS
+            day_idx = min(len(self.o2_profile) - 1,
+                        int(self.sim_time_hours / 24.0))
+            self.day_label_var.set(f"Day: {day_idx}") # SHOW LABLE
+            print(f"Sim Time: {self.sim_time_hours:.2f} hours, Day Index: {day_idx}, O₂ Target: {self.o2_profile[day_idx]:.2f}%")
+            target_o2_mass = self.o2_profile[day_idx]
+            for room in self.rooms_list:
+                vol_L = room.get_volume_liters()
+                if vol_L > 0:
+                    mass_air_kg = (vol_L / 1000.0) * 1.429
+                    frac = target_o2_mass / mass_air_kg
+                    room.o2_level = max(
+                        MARS_O2_PERCENTAGE,
+                        min(NORMAL_O2_PERCENTAGE, frac * 100.0)
+                    )
+
+        # 3) Rebuild the field arrays
+        self.o2_field_ground_truth.fill(MARS_O2_PERCENTAGE)
+        self.co2_field_ground_truth.fill(MARS_CO2_PPM)
+        for ri in range(self.sim_grid_rows):
+            for ci in range(self.sim_grid_cols):
+                cx, cy = self._sim_to_canvas_coords_center(ri, ci)
+                for room in self.rooms_list:
+                    if room.contains_point(cx, cy):
+                        self.o2_field_ground_truth[ri, ci] = room.o2_level
+                        self.co2_field_ground_truth[ri, ci] = room.co2_level
+                        break
+
+        # 4) Apply leaks
+        self._apply_leaks()
+
+        # 5) Update GP / sensors every N frames
+        self.gp_update_counter += 1
+        if (self.gp_update_counter >= GP_UPDATE_EVERY_N_FRAMES
+            or not SKLEARN_AVAILABLE
+            or not self.sensors_list):
+            self.update_gp_model_and_predict()
+            self.gp_update_counter = 0
+
+        # 6) Refresh any on‑screen labels
+        if self.selected_room_obj:
+            self.room_o2_label .config(text=f"O2: {self.selected_room_obj.o2_level:.2f}%")
+            self.room_co2_label.config(text=f"CO2: {self.selected_room_obj.co2_level:.0f} ppm")
+        if self.selected_sensor_obj:
+            o2r, co2r = (self.selected_sensor_obj.last_o2_reading,
+                        self.selected_sensor_obj.last_co2_reading)
+            self.sensor_o2_reading_label .config(
+                text=f"O2 Read: {o2r:.2f}%" if o2r is not None else "N/A")
+            self.sensor_co2_reading_label.config(
+                text=f"CO2 Read: {co2r:.0f} ppm" if co2r is not None else "N/A")
+
+        # 7) Redraw the canvas
+        self.draw_field_visualization()
+        self.draw_color_scale()
+
+        # 8) Schedule the next step
+        self.sim_job_id = self.after(
+            int(SIM_STEP_REAL_TIME_SECONDS * 1000),
+            self.run_simulation_step
+        )
+>>>>>>> 886167d59b03cd33abeb0c7616f31cc096b1125a
 
 
 # Placeholder for OxygenPerson if oxygen.py is not found
