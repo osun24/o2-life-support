@@ -182,15 +182,25 @@ class RoomShape:
         return None 
 
 class RoomRectangle(RoomShape):
-    def __init__(self, x, y, width, height, room_type=RoomType.NONE):
+    def __init__(self, x, y, width, height, room_type=RoomType.NONE, app_ref=None):
         super().__init__(x, y, room_type)
         self.width = width
         self.height = height
+        self.app_ref = app_ref
     def draw(self, canvas):
-        if self.canvas_item_id: canvas.delete(self.canvas_item_id)
-        self.canvas_item_id = canvas.create_rectangle(self.x, self.y, self.x + self.width, self.y + self.height,
-            fill=self.color, outline=DEFAULT_OUTLINE_COLOR, width=DEFAULT_OUTLINE_WIDTH, tags=("user_shape", f"room_{self.id}"))
-        if self.selected: self.select(canvas)
+        if self.canvas_item_id:
+            canvas.delete(self.canvas_item_id)
+        # Use O₂ concentration color only if simulation is running
+        if self.app_ref and getattr(self.app_ref, 'sim_running', False):
+            fill_color = self.app_ref.get_o2_color(self.o2_level)
+        else:
+            fill_color = self.color
+        self.canvas_item_id = canvas.create_rectangle(
+            self.x, self.y, self.x + self.width, self.y + self.height,
+            fill=fill_color, outline=DEFAULT_OUTLINE_COLOR, width=DEFAULT_OUTLINE_WIDTH, tags=("user_shape", f"room_{self.id}")
+        )
+        if self.selected:
+            self.select(canvas)
     def contains_point(self, px, py): return self.x <= px <= self.x + self.width and self.y <= py <= self.y + self.height
     def move_to(self, canvas, new_x, new_y): 
         self.x = new_x; self.y = new_y
@@ -209,14 +219,24 @@ class RoomRectangle(RoomShape):
         return None
 
 class RoomCircle(RoomShape):
-    def __init__(self, center_x, center_y, radius, room_type=RoomType.NONE):
+    def __init__(self, center_x, center_y, radius, room_type=RoomType.NONE, app_ref=None):
         super().__init__(center_x, center_y, room_type)
         self.radius = radius
+        self.app_ref = app_ref  # Store app reference for color retrieval
     def draw(self, canvas):
-        if self.canvas_item_id: canvas.delete(self.canvas_item_id)
-        self.canvas_item_id = canvas.create_oval(self.x-self.radius, self.y-self.radius, self.x+self.radius, self.y+self.radius,
-            fill=self.color, outline=DEFAULT_OUTLINE_COLOR, width=DEFAULT_OUTLINE_WIDTH, tags=("user_shape", f"room_{self.id}"))
-        if self.selected: self.select(canvas)
+        if self.canvas_item_id:
+            canvas.delete(self.canvas_item_id)
+        # Use O₂ concentration color only if simulation is running
+        if self.app_ref and getattr(self.app_ref, 'sim_running', False):
+            fill_color = self.app_ref.get_o2_color(self.o2_level)
+        else:
+            fill_color = self.color
+        self.canvas_item_id = canvas.create_oval(
+            self.x - self.radius, self.y - self.radius, self.x + self.radius, self.y + self.radius,
+            fill=fill_color, outline=DEFAULT_OUTLINE_COLOR, width=DEFAULT_OUTLINE_WIDTH, tags=("user_shape", f"room_{self.id}")
+        )
+        if self.selected:
+            self.select(canvas)
     def contains_point(self, px, py): return (px - self.x)**2 + (py - self.y)**2 <= self.radius**2
     def move_to(self, canvas, new_center_x, new_center_y): 
         self.x = new_center_x; self.y = new_center_y
@@ -251,7 +271,8 @@ class DrawingApp(ttk.Frame):
         self.is_dragging = False; self.was_resizing_session = False; self.drag_action_occurred = False
         self.drag_offset_x = 0; self.drag_offset_y = 0
         self.drag_start_state = None 
-        self.sim_grid_rows = (CANVAS_HEIGHT-AXIS_MARGIN)//CELL_SIZE; self.sim_grid_cols = (CANVAS_WIDTH-AXIS_MARGIN)//CELL_SIZE
+        self.sim_grid_rows = (CANVAS_HEIGHT-AXIS_MARGIN)//CELL_SIZE
+        self.sim_grid_cols = (CANVAS_WIDTH-AXIS_MARGIN)//CELL_SIZE
         self.o2_field_ground_truth = np.full((self.sim_grid_rows,self.sim_grid_cols), MARS_O2_PERCENTAGE, dtype=float)
         self.co2_field_ground_truth = np.full((self.sim_grid_rows,self.sim_grid_cols), MARS_CO2_PPM, dtype=float)
         self.map_mask = np.zeros((self.sim_grid_rows,self.sim_grid_cols), dtype=int)
@@ -356,13 +377,17 @@ class DrawingApp(ttk.Frame):
         
     # Resize canvas
     def _on_canvas_resize(self, event):
-        # update globals (or you can switch to self.CANVAS_WIDTH etc.)
         global CANVAS_WIDTH, CANVAS_HEIGHT
         CANVAS_WIDTH, CANVAS_HEIGHT = event.width, event.height
-        # re‐draw grid, color‐scale, and all elements at new size
+        self.sim_grid_rows = (CANVAS_HEIGHT - AXIS_MARGIN) // CELL_SIZE
+        self.sim_grid_cols = (CANVAS_WIDTH - AXIS_MARGIN) // CELL_SIZE
+        self.o2_field_ground_truth = np.full((self.sim_grid_rows, self.sim_grid_cols), MARS_O2_PERCENTAGE, dtype=float)
+        self.co2_field_ground_truth = np.full((self.sim_grid_rows, self.sim_grid_cols), MARS_CO2_PPM, dtype=float)
+        self.map_mask = np.zeros((self.sim_grid_rows, self.sim_grid_cols), dtype=int)
+        self.XY_gp_prediction_grid = self._create_gp_prediction_grid()
+        self.prepare_visualization_map_and_fields()
         self.draw_visual_grid_and_axes()
         self.draw_color_scale()
-        self.prepare_visualization_map_and_fields()
 
     def _update_room_type_areas_display(self):
         areas={
@@ -486,8 +511,8 @@ class DrawingApp(ttk.Frame):
                                          'radius': getattr(ci, 'radius', None)}
             else: self.drag_offset_x,self.drag_offset_y=0,0
             self._show_element_params_frame()
-        elif self.current_mode=="rectangle": self.add_new_room(RoomRectangle(eff_x,eff_y,CELL_SIZE*4,CELL_SIZE*3,RoomType.LIVING_QUARTERS))
-        elif self.current_mode=="circle": self.add_new_room(RoomCircle(eff_x,eff_y,CELL_SIZE*2,RoomType.LIVING_QUARTERS))
+        elif self.current_mode=="rectangle": self.add_new_room(RoomRectangle(eff_x,eff_y,CELL_SIZE*4,CELL_SIZE*3,RoomType.LIVING_QUARTERS, app_ref = self))
+        elif self.current_mode=="circle": self.add_new_room(RoomCircle(eff_x,eff_y,CELL_SIZE*2,RoomType.LIVING_QUARTERS, app_ref = self))
     
     def add_new_room(self,new_room_obj):
         if self.sim_running: self.sim_status_label_var.set("Cannot add rooms while sim running."); return
@@ -770,6 +795,13 @@ class DrawingApp(ttk.Frame):
         if self.selected_room_obj: self.room_o2_label.config(text=f"O2: {self.selected_room_obj.o2_level:.2f}%"); self.room_co2_label.config(text=f"CO2: {self.selected_room_obj.co2_level:.0f} ppm")
         if self.selected_sensor_obj: o2r,co2r=self.selected_sensor_obj.last_o2_reading,self.selected_sensor_obj.last_co2_reading; self.sensor_o2_reading_label.config(text=f"O2 Read: {o2r:.2f}%" if o2r is not None else "N/A"); self.sensor_co2_reading_label.config(text=f"CO2 Read: {co2r:.0f} ppm" if co2r is not None else "N/A")
         self.draw_field_visualization(); self.draw_color_scale(); self.sim_job_id=self.after(int(SIM_STEP_REAL_TIME_SECONDS*1000),self.run_simulation_step)
+
+    def get_o2_color(self, o2_level, min_o2=NORMAL_O2_PERCENTAGE*0.5, max_o2=NORMAL_O2_PERCENTAGE):
+        # Use a blue-red colormap: high O2 = green, low O2 = red
+        norm = mcolors.Normalize(vmin=min_o2, vmax=max_o2)
+        cmap = cm.get_cmap('RdYlGn')  # Green = good, Red = bad
+        rgba = cmap(norm(o2_level))
+        return mcolors.to_hex(rgba)
 
 try: raise ImportError("Placeholders")
 except ImportError:
