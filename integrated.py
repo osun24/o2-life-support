@@ -42,6 +42,15 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.widgets import Slider as MplSlider, Button as MplButton
 
+import shapely
+import sklearn
+
+# PRINT VERSIONS:
+print(f"Tkinter version: {tk.TkVersion}")
+print(f"NumPy version: {np.__version__}")
+print(f"Shapely version: {shapely.__version__ if SHAPELY_AVAILABLE else 'Not available'}")
+print(f"Scikit-learn version: {sklearn.__version__ if SKLEARN_AVAILABLE else 'Not available'}")
+print(f"Matplotlib version: {plt.matplotlib.__version__}")
 
 # --- Constants for Habitat Design Tab ---
 NORMAL_O2_PERCENTAGE = 21.0
@@ -399,7 +408,6 @@ class DrawingApp(ttk.Frame):
         canvas_area_f.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, pady=(0,10))
         self.drawing_canvas = tk.Canvas(canvas_area_f, bg="white", relief=tk.SUNKEN, borderwidth=1)
         self.drawing_canvas.pack(side=tk.LEFT, padx=(0, COLOR_SCALE_PADDING), pady=0, expand=True, fill=tk.BOTH)
-        self.drawing_canvas.bind("<Configure>", self._on_canvas_resize)
         self.color_scale_canvas = tk.Canvas(canvas_area_f, width=COLOR_SCALE_WIDTH, height=CANVAS_HEIGHT, bg="whitesmoke", relief=tk.SUNKEN, borderwidth=1)
         self.color_scale_canvas.pack(side=tk.RIGHT, pady=0, fill=tk.Y)
         bottom_sim_f = ttk.Frame(main_f)
@@ -443,19 +451,6 @@ class DrawingApp(ttk.Frame):
         self.colony_size_scale.set(50)
         self.draw_visual_grid_and_axes(); self.draw_color_scale(); self.drawing_canvas.bind("<Button-1>",self.handle_mouse_down); self.drawing_canvas.bind("<B1-Motion>",self.handle_mouse_drag); self.drawing_canvas.bind("<ButtonRelease-1>",self.handle_mouse_up)
         self._update_room_type_areas_display(); self._show_element_params_frame()
-
-    def _on_canvas_resize(self, event):
-        global CANVAS_WIDTH, CANVAS_HEIGHT
-        CANVAS_WIDTH, CANVAS_HEIGHT = event.width, event.height
-        self.sim_grid_rows = (CANVAS_HEIGHT - AXIS_MARGIN) // CELL_SIZE
-        self.sim_grid_cols = (CANVAS_WIDTH - AXIS_MARGIN) // CELL_SIZE
-        self.o2_field_ground_truth = np.full((self.sim_grid_rows, self.sim_grid_cols), MARS_O2_PERCENTAGE, dtype=float)
-        self.co2_field_ground_truth = np.full((self.sim_grid_rows, self.sim_grid_cols), MARS_CO2_PPM, dtype=float)
-        self.map_mask = np.zeros((self.sim_grid_rows, self.sim_grid_cols), dtype=int)
-        self.XY_gp_prediction_grid = self._create_gp_prediction_grid()
-        self.prepare_visualization_map_and_fields()
-        self.draw_visual_grid_and_axes()
-        self.draw_color_scale()
 
     def _on_colony_size_change(self, val):
         size = int(float(val))
@@ -1257,7 +1252,7 @@ class EnergySimulationTabBase(ttk.Frame):
         self.canvas = FigureCanvasTkAgg(self.fig, master=self)
         self.canvas_widget = self.canvas.get_tk_widget()
         self.canvas_widget.pack(side=tk.TOP, fill=tk.BOTH, expand=True, pady=5)
-        self.canvas_widget.bind("<Configure>", self._on_canvas_resize)
+        
         self.fig.subplots_adjust(bottom=0.2, top=0.9) # Adjusted bottom for controls
 
         self.controls_frame = ttk.Frame(self)
@@ -1293,12 +1288,6 @@ class EnergySimulationTabBase(ttk.Frame):
         # it should trigger OverallEnergyTab's refresh.
         # This is better handled by DrawingApp or MainApplication to avoid circular dependencies.
         # For now, DrawingApp's sim step / area update will trigger overall refresh.
-
-    def _on_canvas_resize(self, event):
-        width, height = event.width, event.height
-        dpi = self.fig.get_dpi()
-        self.fig.set_size_inches(width / dpi, height / dpi)
-        self.canvas.draw_idle() # Use draw_idle for Configure events
 
     def plot_energy(self, val=None): raise NotImplementedError("Subclasses must implement plot_energy.")
     def update_limit(self):
